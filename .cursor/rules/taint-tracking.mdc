@@ -1,0 +1,34 @@
+---
+description: Taint tracking standards, propagation rules, sanitization modeling, and soundness vs precision tradeoffs.
+alwaysApply: true
+---
+
+# Taint Tracking Rules
+
+## Goals
+
+Model flow of **untrusted data** from sources (superglobals, REST params, meta, options when attacker-controlled) to **sinks** (SQL, HTML output, file ops, deserialization, command exec).
+
+## Propagation
+
+- Define explicit **edge kinds**: assignment, call argument/return, array/key propagation, object fields, reference aliasing (PHP) with conservative handling when static resolution fails.
+- **Sanitizers and validators** must be encoded as nodes or typed edges with known semantics; unknown helpers widen taint unless proven safe by a maintained allowlist.
+
+## WordPress-Specific Sources/Sinks
+
+- Sources: `$_GET`, `$_POST`, `$_REQUEST`, `$_COOKIE`, `$_SERVER` indices like `HTTP_*`, `WP_REST_Request`, meta accessors when threat model marks them untrusted.
+- Sinks: `$wpdb` queries, `echo`/`print` of variables into HTML contexts, `include` with variable paths, `unserialize`, `shell_exec` family, `wp_remote_*` with attacker-controlled URLs (SSRF).
+
+## Weak Propagation Anti-Patterns
+
+- Do not drop taint on implicit flows without modeling.
+- Do not assume `esc_*` or `sanitize_*` correctness without mapping to **output context** (HTML attribute vs JS vs URL).
+- Treat dynamic hooks and filters as **unknown transformers** unless resolved.
+
+## Feature Extraction
+
+Emit machine-readable taint summaries for agents: max path length, min sanitizer count, branch uncertainty flags.
+
+## Testing
+
+- Maintain micro-fixtures for tricky PHP flows (references, compact/extract, closures, traits).

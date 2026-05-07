@@ -1,0 +1,30 @@
+---
+description: Code review bar for security-sensitive changes and AI-generated patches.
+alwaysApply: true
+---
+
+# Code Review Rules
+
+## Mandatory Checks for Reviewers
+
+- Confirm **authz** on new endpoints and background jobs.
+- Confirm **input validation** and resource limits on parsers/ingestion.
+- Confirm **schema migrations** are backward compatible or paired with tooling.
+- Confirm **tests** updated for behavior changes; no silent golden drift.
+- Confirm **observability**: logs/metrics/traces where appropriate.
+- Confirm **documentation** updated when public contracts change.
+
+## AI-Generated Code
+
+- Treat AI outputs as **untrusted** until compiled, tested, and reasoned about by a human for security-sensitive modules.
+- Require evidence links in PR descriptions for security-relevant claims.
+
+## Rejection Criteria
+
+- Hidden agent logic in production paths.
+- Severity assignment without verification hooks.
+- Direct execution of plugin code on host without sandbox policy.
+
+## Quality Bar
+
+- Readability, narrow interfaces, explicit error handling, and no “temporary” bypasses without ticket + expiry.

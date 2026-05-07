@@ -1,0 +1,33 @@
+---
+description: FastAPI, Typer, Pydantic, service boundaries, and Python backend conventions.
+alwaysApply: true
+---
+
+# Backend Rules
+
+## Stack Conventions
+
+- **FastAPI** for HTTP APIs; **Typer** for CLI; **Pydantic v2** for settings and DTOs.
+- Async endpoints only where I/O-bound and safe; CPU-heavy parsing runs in worker processes/tasks with backpressure.
+
+## API Design
+
+- OpenAPI is source-of-truth documentation under `docs/api/`; every endpoint documents auth requirements, idempotency, and error taxonomy.
+- Pagination, filtering, and stable sorting for list endpoints; avoid unbounded responses.
+
+## Errors
+
+- Structured problem+json-style errors internally at minimum: `code`, `message`, `correlation_id`, `details` (non-sensitive).
+- Never leak stack traces to clients in production.
+
+## Jobs & Long Operations
+
+- Repository ingestion and graph builds are **async jobs** with status APIs; include progress metrics and cancellability where feasible.
+
+## Dependency Injection
+
+- Inject repositories and graph clients via constructors/factories for testability.
+
+## Performance
+
+- Stream large artifacts; avoid loading whole repos into memory.

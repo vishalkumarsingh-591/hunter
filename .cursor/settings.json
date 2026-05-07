@@ -1,0 +1,30 @@
+{
+  "comment": "Project-local Cursor preferences for the WP vulnerability research platform. Merge with user settings as needed.",
+  "editor": {
+    "formatOnSave": true,
+    "wordWrap": "on"
+  },
+  "files": {
+    "exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true,
+      "**/.ruff_cache": true,
+      "**/node_modules": true,
+      "**/.venv": true
+    }
+  },
+  "python": {
+    "analysis": {
+      "typeCheckingMode": "basic"
+    }
+  },
+  "cursor.project": {
+    "rulesDirectory": ".cursor/rules",
+    "documentationRoots": ["docs", ".cursor/memory", ".cursor/architecture"],
+    "productContextFiles": [
+      ".cursor/memory/product-context.md",
+      ".cursor/memory/stack.md",
+      ".cursor/memory/architecture-principles.md"
+    ]
+  }
+}

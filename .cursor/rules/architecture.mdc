@@ -1,0 +1,44 @@
+---
+description: Layered architecture, bounded contexts, scalability, and observability expectations.
+alwaysApply: true
+---
+
+# Architecture Rules
+
+## Layered Platform
+
+Enforce clear separation:
+
+1. **Ingestion** — clone/archive intake, manifest, checksums, provenance.
+2. **Parsing** — tree-sitter and semantic lifts; AST/CFG artifacts.
+3. **Graph** — Neo4j canonical store; NetworkX for local algorithms where appropriate.
+4. **Analysis** — deterministic rules, taint propagation, semantic queries.
+5. **Reasoning** — LangGraph-orchestrated multi-agent workflows over **structured state**.
+6. **Verification** — sandboxed or static re-checks; no silent upgrades of severity.
+7. **Confidence** — calibrated scoring with documented features and limits.
+8. **Reporting** — evidence bundles, reproducible reproduction steps (static), signed outputs optional.
+
+## Coupling & Monoliths
+
+- Avoid “god services” that mix parsing, LLM calls, and HTTP in one module.
+- Prefer **ports/adapters** for DB, vector store (future Qdrant), and LLM providers.
+- Shared types live in a dedicated package; avoid circular imports across layers.
+
+## Data Contracts
+
+- Use **Pydantic** models for cross-boundary DTOs (API, agents, jobs).
+- Version graph schemas and migration scripts; backward compatibility or explicit migration paths required.
+
+## Observability
+
+- Adopt **OpenTelemetry**-friendly patterns early: trace spans per pipeline stage, metrics for parse failures, graph build duration, agent token usage, verification outcomes.
+- Structured logging with correlation ids tying ingestion → graph version → report id.
+
+## Failure Handling
+
+- Define timeouts, retries with jitter (idempotent ops only), and dead-letter queues for async jobs (future Kafka/NATS).
+- Partial failures must not corrupt graph consistency; use transactions or compensating actions.
+
+## Explainability in Architecture
+
+Persist **provenance**: which parser version, which rule pack hash, which model id (if any), and which graph snapshot id produced a finding.

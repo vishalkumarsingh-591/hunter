@@ -1,0 +1,39 @@
+---
+description: Knowledge graph construction, consistency, Neo4j modeling, and traversal standards.
+alwaysApply: true
+---
+
+# Graph Engine Rules
+
+## Canonical Store
+
+- **Neo4j** holds the authoritative semantic/security graph for multi-hop reasoning and persistence.
+- **NetworkX** may be used for ephemeral algorithm prototyping with explicit export/import to Neo4j for production paths.
+
+## Schema Discipline
+
+- Node labels and relationship types are **versioned**; document in `.cursor/graphs/` and `docs/graph-models/`.
+- Mandatory uniqueness constraints where applicable (`File.path`, `Symbol.fqn` scoped by repo+commit).
+- No orphan edges: relationship writes occur in the same transaction batch as endpoint nodes or via MERGE patterns that guarantee existence.
+
+## Consistency
+
+- Graph builds are **immutable snapshots** per `(repo_id, commit_sha, build_id)`; mutations create new versions or explicit deltas with lineage.
+- Periodic integrity checks: dangling references, duplicate nodes, inconsistent typing.
+
+## Traversal Patterns
+
+- Encode common security traversals (reachability from user input to sink) as **named procedures** or documented Cypher templates — avoid one-off ad hoc queries in agent prompts.
+
+## Confidence Derivation
+
+- Graph-derived features (distance to sink, presence of sanitizer on all paths, hook registration order when approximated) feed the confidence engine as **structured features**, not prose.
+
+## Performance
+
+- Index properties used for joins and filters; monitor supernode hotspots (e.g., mega `FUNCTION` nodes) and refactor modeling when needed.
+
+## Anti-Patterns
+
+- Do not store raw file blobs inside graph nodes; store hashes and external object storage pointers if needed.
+- Do not allow agents to mutate production graph data without authz + audit + schema validation.

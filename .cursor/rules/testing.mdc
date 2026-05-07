@@ -1,0 +1,33 @@
+---
+description: Testing pyramid, property tests for parsers, golden graphs, and CI expectations.
+alwaysApply: true
+---
+
+# Testing Rules
+
+## Layers
+
+- **Unit**: pure functions, small graph transforms, Pydantic validation.
+- **Integration**: Neo4j test container or ephemeral DB, FastAPI TestClient, Typer CLI harness.
+- **E2E** (later): controlled wp-env fixtures with strict network isolation.
+
+## Parser & Graph Golden Tests
+
+- Commit small **fixture repositories** and expected subgraph excerpts; diff normalized representations.
+- Any change to schema requires updating golden artifacts or migration notes.
+
+## Determinism Tests
+
+- Given fixed inputs, analysis pipelines must produce identical candidate finding ids and ordering policies (document intentional ordering).
+
+## Security Tests
+
+- Negative tests for oversized inputs, malicious zip paths, cyclic symlinks, encoding tricks.
+
+## Coverage Targets
+
+- Critical paths: ingestion, parsing, taint engine, graph builder, auth middleware — high coverage required before risky refactors.
+
+## Performance Regression
+
+- Benchmark hooks for parse+graph on representative WP plugins; alert on regressions beyond thresholds.

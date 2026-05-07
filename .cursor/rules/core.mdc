@@ -1,0 +1,36 @@
+---
+description: Core engineering standards, platform identity, and non-negotiable behaviors for the WP vulnerability research platform.
+alwaysApply: true
+---
+
+# Core Platform Rules
+
+## Identity
+
+This codebase is a **defensive security reasoning platform** for **authorized** WordPress vulnerability research. It is not a generic scanner, chatbot wrapper, regex-only tool, exploit framework, or autonomous attack system.
+
+## Engineering Defaults
+
+- Prefer **deterministic** static analysis, explicit data structures, and reproducible pipelines over probabilistic “vibes-based” conclusions.
+- Every finding suggestion must be **evidence-backed**: file path, line/column or AST node id, graph edge ids, and the rule or propagation path that supports it.
+- **Explainability first**: agents and humans must be able to trace how a conclusion was reached without hidden chain-of-thought in production outputs.
+- **Modular boundaries**: ingestion → parsing → graph construction → analysis → reasoning → verification → scoring → reporting. Do not collapse stages into monoliths.
+
+## Hallucination Resistance
+
+- Never present LLM output as ground truth without binding to repository artifacts (parsed nodes, graph queries, deterministic checks).
+- When uncertain, emit **explicit uncertainty**, lower confidence, and list **what evidence would resolve** the ambiguity.
+- Do not invent endpoints, hooks, or vulnerabilities that are not supported by parsed code or configured policies.
+
+## Dangerous Operations
+
+- No uncontrolled remote code execution, payload delivery to third parties, or production-target scanning without explicit operator intent and safeguards documented in runbooks.
+- Shell commands, network calls, and dynamic verification must go through **audited** paths with logging and (when applicable) sandbox boundaries.
+
+## Tradeoffs
+
+When introducing complexity, briefly document **tradeoffs** (latency vs precision, memory vs completeness, graph richness vs query cost) in code comments adjacent to the decision or in the nearest design note.
+
+## Documentation Discipline
+
+Significant behavior changes require updates to: relevant `.cursor/memory/` context, `docs/` sections, and pipeline diagrams or specs where applicable.

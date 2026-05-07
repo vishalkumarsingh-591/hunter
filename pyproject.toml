@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hunter"
+version = "0.1.0"
+description = "Trustworthy static analysis MVP for WordPress plugins"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.6",
+  "pydantic-settings>=2.2",
+  "typer>=0.12",
+  "structlog>=24.1",
+  "PyYAML>=6.0",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.1",
+  "neo4j>=5.14",
+  "networkx>=3.2",
+  "langgraph>=0.2",
+  "langchain-core>=0.3",
+  "httpx>=0.27",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.29",
+  "tree-sitter>=0.21",
+  "tree-sitter-php>=0.22",
+  "tree-sitter-javascript>=0.21",
+  "tree-sitter-html>=0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=4.1",
+  "ruff>=0.4",
+]
+otel = [
+  "opentelemetry-api>=1.24",
+  "opentelemetry-sdk>=1.24",
+]
+
+[project.scripts]
+hunter = "hunter.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

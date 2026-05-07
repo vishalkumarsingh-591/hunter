@@ -1,0 +1,41 @@
+---
+description: Secure-by-default development, defensive posture, and prohibition of offensive tooling patterns.
+alwaysApply: true
+---
+
+# Security Rules
+
+## Threat Model Assumption
+
+Assume attackers may supply malicious repositories, plugins, themes, and fuzzed inputs to parsers and graph builders. **Never trust repository content.**
+
+## Secure Coding
+
+- Validate all external input sizes, encodings, and nesting depth before parsing; enforce resource limits (memory, time, graph cardinality).
+- Use parameterized queries for PostgreSQL and parameterized Cypher for Neo4j; never string-concatenate untrusted values into queries.
+- Secrets via environment variables or secret managers only; never commit credentials, tokens, or customer data.
+- Cryptography: use well-vetted libraries (e.g., Python `cryptography`), modern algorithms, and secure defaults; no custom crypto.
+- Principle of least privilege for services, DB roles, and Neo4j users.
+
+## Authentication & Authorization
+
+- Separate **operator**, **analyst**, and **service** roles where applicable. Enforce authz at API boundaries and on graph mutation paths.
+- Prevent **IDOR** and cross-tenant leakage in multi-tenant deployments; design APIs with explicit resource scoping.
+
+## AI-Specific Risks
+
+- Do not let LLMs **guess** vulnerabilities without deterministic anchors.
+- Sanitize and schema-validate all structured outputs from models before persisting or executing side effects.
+- Block agents from arbitrary plugin execution, arbitrary file writes outside designated workspaces, or outbound SSRF except via allowlisted verification sandboxes.
+
+## Sandboxing & Dynamic Verification
+
+When dynamic verification is introduced: **mandatory** sandbox (containers/vm-isolated), network egress controls, resource caps, and human-gated escalation for anything resembling exploitation.
+
+## Audit Logging
+
+Security-relevant events (ingestion start/end, graph mutations, verification attempts, operator overrides, confidence changes) must emit structured audit logs suitable for SIEM ingestion.
+
+## Incident Readiness
+
+Changes touching auth, persistence, or agent orchestration must consider rollback, data deletion (GDPR-style where relevant), and documented incident response hooks per `docs/incident-response/`.

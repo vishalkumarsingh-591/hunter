@@ -1,0 +1,35 @@
+---
+description: Deterministic semantic analysis, CFG usage, and conservative approximation policies.
+alwaysApply: true
+---
+
+# Semantic Analysis Rules
+
+## Determinism First
+
+- Security conclusions that affect severity must be justified by **repeatable** analysis: same commit + same rule pack → same candidate findings (modulo explicit timestamps in metadata).
+- Probabilistic components (LLMs) may propose hypotheses; they **cannot** finalize severity without passing skeptic/verification gates.
+
+## CFG & Approximation
+
+- CFG construction may be **conservative** (over-approximate reachability) for soundness-oriented alarms or **precise** for ranked candidates — document which mode a rule uses.
+- Unresolved dynamic calls (`call_user_func`, variable functions) must be modeled explicitly as **unknown targets** with widening, not ignored.
+
+## Semantic Queries
+
+- Prefer graph traversals and structural predicates over text search for vulnerability patterns.
+- Encode WordPress-specific semantics (hooks, roles, options API) as explicit graph relations or attributes, not ad-hoc string matching alone.
+
+## Evidence Bundles
+
+Each candidate finding must link to:
+
+- Source nodes (definitions, callsites).
+- Dataflow/taint path summary (edge types and key sanitizers).
+- Rule id and parameters.
+- Known **false positive** patterns acknowledged when applicable.
+
+## Anti-Patterns
+
+- No “LLM read this file and tell me if it’s vulnerable” as a standalone pipeline stage.
+- No severity inflation without independent corroboration path.

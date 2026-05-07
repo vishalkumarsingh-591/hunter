@@ -1,0 +1,35 @@
+---
+description: LangGraph orchestration, agent boundaries, state machines, and transparency requirements.
+alwaysApply: true
+---
+
+# Agent Orchestration Rules
+
+## Orchestration Technology
+
+- Use **LangGraph** (or equivalent explicit state machine) with typed state and checkpointing; avoid opaque sequential scripts calling LLMs ad hoc.
+
+## Roles
+
+Minimum roles:
+
+- **Extraction** — structured facts from AST/graph slices only.
+- **Security Analyst** — hypothesis formation grounded in deterministic signals.
+- **Skeptic** — searches for counterevidence and alternate explanations.
+- **Verification** — schedules/runs sandbox-limited checks or static corroboration.
+- **Confidence** — aggregates features; never sole LLM judgment.
+- **Reporting** — emits human-readable + machine-readable bundles.
+
+## Forbidden Patterns
+
+- Agents sharing unrestricted memory without scrubbing untrusted content.
+- Recursive self-expanding tool loops without budgets and abort conditions.
+- Final decisions made without passing skeptic + confidence gates for High/Critical claims.
+
+## Observability
+
+- Emit spans per node transition; persist compact decision rationales **linked** to evidence ids, not raw chain-of-thought.
+
+## Modularity
+
+Each agent’s prompts/specs live under `.cursor/agents/`; orchestration graphs under `.cursor/pipelines/` with inputs/outputs documented.

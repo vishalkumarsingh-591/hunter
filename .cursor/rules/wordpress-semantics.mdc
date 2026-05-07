@@ -1,0 +1,40 @@
+---
+description: WordPress-specific security semantics, hooks, capabilities, and REST modeling expectations.
+alwaysApply: true
+---
+
+# WordPress Semantics Rules
+
+## Surface Understanding
+
+Model major trust boundaries:
+
+- **Public HTTP / REST** vs **admin-ajax** vs **CLI/cron** contexts.
+- **Authenticated roles/caps** vs **unauthenticated** endpoints.
+- **Multisite** superadmin vs site admin distinctions when relevant.
+
+## Hooks
+
+- Represent `add_action` / `add_filter` registrations with callback resolution when static; otherwise **register unresolved callbacks** with conservative capability assumptions based on hook name heuristics only if labeled as low-confidence.
+
+## Nonces & CSRF
+
+- Detect nonce parameter usage (`wp_nonce_field`, `check_ajax_referer`, etc.) and tie to state-changing operations.
+- Do not claim CSRF protection without matching verification on the mutating path.
+
+## Capabilities
+
+- Parse `current_user_can`, `user_can`, map known capability strings; unresolved dynamic caps → mark checks as unknown.
+
+## Data Stores
+
+- Distinguish **options**, **post meta**, **user meta**, **transients**; tag attacker control based on threat model profile (e.g., subscriber can set meta vs admin-only).
+
+## Object Cache / Filters
+
+- Treat highly dynamic filters as potential **behavior modifiers**; findings must state assumptions when plugins alter sanitization.
+
+## Anti-Patterns
+
+- Avoid WordPress-only pattern matching without graph anchoring.
+- Never infer “must be admin-only” without route registration + capability evidence chain.

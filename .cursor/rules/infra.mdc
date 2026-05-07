@@ -1,0 +1,35 @@
+---
+description: Infrastructure posture for future Docker/Kubernetes/Terraform and observability backends.
+alwaysApply: true
+---
+
+# Infrastructure Rules
+
+## Environment Separation
+
+- **dev / staging / prod** isolation for databases, graph stores, and object storage. No shared Neo4j/Postgres credentials across envs.
+
+## Containers (Future)
+
+- Minimal base images, non-root users, read-only root filesystems where possible, seccomp/apparmor profiles for dynamic verification workers.
+
+## Secrets
+
+- Mount secrets via orchestrator secrets or vault; rotate regularly; log access to secrets only at coarse-grained audit level.
+
+## Terraform (Future)
+
+- Modules per concern (network, data stores, k8s); state locking; policy-as-code for risky changes.
+
+## Observability Stack (Future)
+
+- Prometheus metrics exporters for API latency, job backlog, parser failures, Neo4j query timings (sanitized labels).
+- Grafana dashboards versioned as code; alerts with runbook links.
+
+## Data Protection
+
+- Encrypt data at rest for Postgres/Neo4j/object storage; TLS for all service mesh paths.
+
+## Supply Chain
+
+- Pin dependency hashes in Python; scan images; SBOM generation for releases.

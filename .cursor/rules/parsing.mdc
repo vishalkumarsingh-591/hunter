@@ -1,0 +1,35 @@
+---
+description: Parser safety, completeness expectations, and semantic lift standards using tree-sitter.
+alwaysApply: true
+---
+
+# Parsing Rules
+
+## Parsers
+
+- Primary grammars: **tree-sitter-php**, **tree-sitter-javascript**, **tree-sitter-html** (and TS/JS variants as needed). Do not replace AST semantics with regex-heavy shortcuts for security-critical constructs.
+- Every parsed file must record: language, byte offsets, line/column, content hash, and parser grammar revision.
+
+## Safety
+
+- Cap file size, AST depth, and node counts; fail closed with explicit errors.
+- Handle ambiguous encodings explicitly (detect → normalize → record original hash).
+- Never `eval` or execute parsed PHP/JS during static phases.
+
+## Semantic Lift
+
+- Map tree-sitter nodes to stable **internal node ids** used by the graph; ids must survive within a build but may change across versions — document migration strategy.
+- Capture WordPress-relevant hooks (`add_action`, `add_filter`), capability checks, nonces, sanitization/escaping wrappers when statically recognizable.
+
+## Comments & Docblocks
+
+- Persist comments attached to the nearest declaration node when policy requires evidence from documentation vs implementation mismatches.
+- Distinguish **unreachable** or **generated** code paths when detectable.
+
+## Tests
+
+- Parser changes require fixture repos and golden AST/graph fragments; differential tests for regression.
+
+## No Unsafe Parser Behavior
+
+- Disable or sandbox any native extensions; prefer pure Python bindings with explicit ABI/version pinning.

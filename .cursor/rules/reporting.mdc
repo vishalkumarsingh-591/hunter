@@ -1,0 +1,37 @@
+---
+description: Evidence-backed reporting, audit trails, and export formats for findings.
+alwaysApply: true
+---
+
+# Reporting Rules
+
+## Evidence Bundles
+
+Reports must include:
+
+- Repository identity + exact commit SHA.
+- Build id / graph snapshot id / rule pack hash.
+- Finding records with locations, code excerpts (bounded), graph path summaries, taint summaries.
+- Confidence and verification state.
+- Operator attribution for manual overrides.
+
+## Formats
+
+- Human-readable (Markdown/HTML/PDF export path) + machine-readable (JSON/CycloneDX-style extensions only if justified).
+
+## Non-Hallucination Contract
+
+- No fabricated CVEs, versions, or filenames; if unknown, state unknown.
+- Clearly separate **facts** (parsed) vs **interpretations** (models).
+
+## Reproducibility
+
+- Document commands/commit of tooling to reproduce static portions; dynamic portions list sandbox image digest.
+
+## Retention & Privacy
+
+- Redact secrets from excerpts; configurable retention windows.
+
+## Review
+
+- High/Critical external reports require second human approval path (future workflow hook).

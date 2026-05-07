@@ -1,0 +1,19 @@
+pack_id: hunter-default
+version: "1"
+rules:
+  - id: RULE-SQLI-001
+    description: "Coarse same-file superglobal to $wpdb->query ordering witness"
+    severity_band: MEDIUM
+    python_evaluator_id: sqli_file_coarse
+  - id: RULE-XSS-001
+    description: "Echo segment may include superglobal-derived expression (coarse)"
+    severity_band: LOW
+    python_evaluator_id: xss_echo_coarse
+  - id: RULE-WP-NONCE-001
+    description: "Nonce verification gated only on GET (bypassable via POST/other methods)"
+    severity_band: MEDIUM
+    python_evaluator_id: wp_nonce_get_only
+  - id: RULE-WP-AJAX-001
+    description: "nopriv AJAX registration without capability check in same file"
+    severity_band: HIGH
+    python_evaluator_id: ajax_nopriv_no_cap

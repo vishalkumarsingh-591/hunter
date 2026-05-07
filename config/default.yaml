@@ -1,0 +1,47 @@
+# Hunter default configuration — override with HUNTER_* env or --config path
+
+output:
+  root: "./output"
+  snapshot_mode: "copy"  # copy | manifest-only
+
+ingest:
+  max_files: 50000
+  max_total_bytes: 5368709120  # 5 GiB
+  max_single_file_bytes: 52428800  # 50 MiB
+  max_depth: 64
+  follow_symlinks: false
+
+parse:
+  per_file_timeout_seconds: 120
+  lift_version: "1"
+
+graph:
+  schema_version: "1"
+  batch_size: 500
+  neo4j_uri: ""  # set HUNTER_NEO4J_URI or env NEO4J_URI
+  neo4j_user: "neo4j"
+  neo4j_password: ""
+
+persistence:
+  database_url: ""  # HUNTER_DATABASE_URL — postgres or sqlite
+
+analysis:
+  rule_pack_path: ""  # default: packaged packs
+  rule_timeout_seconds: 60
+
+taint:
+  max_function_nodes: 5000
+  max_edges_per_function: 50000
+  worklist_steps: 200000
+
+agents:
+  enabled: false
+  max_tool_calls: 32
+  llm_model: ""
+
+confidence:
+  weights_path: ""  # default packaged weights.yaml
+
+observability:
+  otel_enabled: false
+  log_level: "INFO"

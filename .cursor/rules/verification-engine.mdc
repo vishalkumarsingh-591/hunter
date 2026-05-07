@@ -1,0 +1,31 @@
+---
+description: Verification stages, sandbox mandates, and escalation policies for dynamic checks.
+alwaysApply: true
+---
+
+# Verification Engine Rules
+
+## Purposes
+
+Corroborate or falsify candidate findings through:
+
+1. **Static re-verification** — alternate traversal, cross-rule checks, type refinement.
+2. **Sandboxed dynamic** — controlled wp-env / container with no production data and network egress disabled by default.
+
+## Sandboxing
+
+- Mandatory isolation for any runtime execution of plugin/theme code.
+- Resource quotas: CPU, RAM, wall clock, FS writes to tmp only.
+- Capture stdout/stderr/logs as artifacts; no blind retries on flaky infra without labeling uncertainty.
+
+## Evidence Output
+
+- Verification produces structured results: `status` (`confirmed`, `refuted`, `inconclusive`), `artifacts[]`, `limits[]`.
+
+## Safety
+
+- No auto-pivot to scanning third-party sites; targets must be declared.
+
+## Integration
+
+- Verification never silently raises severity; analyst + skeptic review inconclusive outcomes.

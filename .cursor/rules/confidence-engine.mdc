@@ -1,0 +1,34 @@
+---
+description: Confidence scoring features, calibration, explicit thresholds, and anti-hallucination coupling.
+alwaysApply: true
+---
+
+# Confidence Engine Rules
+
+## Explicit Scores
+
+Every promoted finding must carry:
+
+- `confidence_score` in `[0,1]` or enumerated buckets with numeric mapping.
+- `evidence_strength` breakdown (static proof depth, test outcomes, graph path specificity).
+- `known_fp_family` tags when applicable.
+
+## Features Only
+
+Scores derive from **observable features**: graph path quality, sanitizer coverage, hook context certainty, duplicate historical FP rate, verification results — not LLM self-assessment alone.
+
+## Calibration
+
+- Maintain evaluation sets with labeled outcomes; track precision/recall per bucket; recalibrate when schema/rules change materially.
+
+## Thresholds
+
+- Define promotion thresholds for internal vs external reporting; sub-threshold items remain “candidates.”
+
+## Transparency
+
+- Document limitations (dynamic calls unresolved, partial repo context) as explicit score penalties.
+
+## Anti-Patterns
+
+- “Model certainty” without cross-checks is invalid for High/Critical externally visible outputs.

@@ -1,0 +1,20 @@
+# Sanitizer → allowed sink contexts (PART 1 — conservative defaults)
+sanitizers:
+  esc_html:
+    - HTML_BODY
+  esc_attr:
+    - HTML_ATTR
+  esc_url:
+    - URL_ATTR
+  wp_kses_post:
+    - HTML_BODY
+  wp_kses:
+    - HTML_BODY
+  sanitize_text_field:
+    - PLAIN_TEXT
+  absint:
+    - SQL_INTEGER
+  intval:
+    - SQL_INTEGER
+  prepare:
+    - SQL_STATEMENT

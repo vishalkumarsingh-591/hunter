@@ -1,0 +1,32 @@
+---
+description: Branching, commits, reproducibility metadata, and release hygiene.
+alwaysApply: true
+---
+
+# Git Workflow Rules
+
+## Branches
+
+- `main` is releasable; feature branches `feat/*`, fixes `fix/*`, research spikes `spike/*` (non-merge without hardening).
+
+## Commits
+
+- Conventional commits encouraged: `feat:`, `fix:`, `chore:`, `docs:`, `sec:`.
+- Include issue/ticket references when applicable.
+
+## Reproducibility Metadata
+
+- Tag releases with **rule pack version**, **parser grammar lockfile**, and **schema version**.
+- Document migration steps in commit messages or `docs/runbooks/` when pipelines change.
+
+## PRs
+
+- Use `.cursor/templates/PR-description.md`; security-sensitive PRs require explicit threat notes.
+
+## Secrets
+
+- Pre-commit hooks (recommended) to block secrets; rotate if leaked.
+
+## Large Files
+
+- Use Git LFS or external artifact storage for massive fixtures; keep repo clone-friendly.
