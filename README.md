@@ -4,14 +4,44 @@ Deterministic-first static analysis for **local WordPress plugin** directories: 
 
 ## Quickstart
 
+### 1) Create + activate venv
 ```powershell
-cd c:\hunter
-python -m venv .venv
-.\.venv\Scripts\pip install -e ".[dev]"
-.\.venv\Scripts\hunter scan tests\fixtures\wp_plugins\minimal_plugin
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
 ```
 
-Outputs default to `./output/<plugin-slug>/` (override with `--output-root` or `HUNTER_OUTPUT_ROOT` / `config/default.yaml`).
+### 2) Install the project (editable)
+```powershell
+pip install -e .
+```
+
+### 3) Run tests
+```powershell
+pytest -q
+```
+
+### 4) Run a scan (example fixture)
+```powershell
+python -m hunter.cli.main tests\fixtures\wp_plugins\minimal_plugin
+```
+
+### 5) Run a scan (your local plugin path)
+```powershell
+python -m hunter.cli.main "C:\path\to\wp-content\plugins\some-plugin"
+```
+
+### Output
+Outputs default to `./output/<plugin-slug>/` and include:
+- `reports/summary.md` (human summary)
+- `reports/findings.json` (machine-readable report)
+- `findings/enriched.jsonl` (one JSON per enriched finding)
+- `evidence/<id>/source_excerpt.txt` (bounded excerpts)
+
+### CLI note (common gotcha)
+The current MVP CLI expects **only the plugin path** (no `scan` subcommand):
+- ✅ `python -m hunter.cli.main <plugin_path>`
+- ❌ `python -m hunter.cli.main scan <plugin_path>`
 
 ## Configuration
 
