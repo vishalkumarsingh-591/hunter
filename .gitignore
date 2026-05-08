@@ -1,6 +1,7 @@
 /output/
 /cache/
 .venv/
+output/
 venv/
 __pycache__/
 *.py[cod]
@@ -18,3 +19,4 @@ build/
 .vscode/
 coverage.xml
 htmlcov/
+.cursor/phases/
