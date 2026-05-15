@@ -13,10 +13,12 @@ ingest:
 
 parse:
   per_file_timeout_seconds: 120
-  lift_version: "1"
+  lift_version: "2"
+  structure_complete_mode: true
+  max_ir_nodes_per_file: 250000
 
 graph:
-  schema_version: "1"
+  schema_version: "3"
   batch_size: 500
   neo4j_uri: ""  # set HUNTER_NEO4J_URI or env NEO4J_URI
   neo4j_user: "neo4j"
@@ -28,19 +30,44 @@ persistence:
 analysis:
   rule_pack_path: ""  # default: packaged packs
   rule_timeout_seconds: 60
+  max_same_file_flow_edges_per_file: 500
 
 taint:
   max_function_nodes: 5000
   max_edges_per_function: 50000
+  max_interprocedural_flow_edges: 5000
   worklist_steps: 200000
+  regex_taint_fallback_enabled: false
 
 agents:
   enabled: false
   max_tool_calls: 32
   llm_model: ""
 
+semantic:
+  ir_v2_enabled: true
+  resolver_interprocedural_enabled: true
+  cfg_ssa_enabled: true
+  # Disable for faster triage scans with fewer cross-file flow edges
+  taint_path_sensitive_enabled: true
+  wp_semantics_v2_enabled: true
+  security_popchain_enabled: true
+  semantic_diff_enabled: false
+  incremental_recompute_enabled: false
+  neo4j_layered_write_enabled: false  # reserved for future Neo4j bulk export; layer tags are always applied in-memory
+  max_functions: 20000
+  max_cfg_blocks: 250000
+
 confidence:
   weights_path: ""  # default packaged weights.yaml
+
+reporting:
+  summary_grouped: true
+  summary_min_confidence: 0.0
+  summary_exclude_rules: []
+  summary_max_groups: 500
+  summary_include_blocked: false
+  summary_triage_min_bucket: "MEDIUM"
 
 observability:
   otel_enabled: false

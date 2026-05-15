@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from hunter.logging import get_logger
@@ -10,6 +11,7 @@ from hunter.models.ir import FileParseArtifact, ParseRunResult
 from hunter.parse.grammar_lock import grammar_lock_hash
 from hunter.parse.languages import language_for_file, load_languages
 from hunter.parse.lift import lift_tree
+from hunter.parse.lift_v2 import lift_tree_v2
 
 _LOG = get_logger("hunter.parse")
 
@@ -30,6 +32,10 @@ def parse_manifest(
     *,
     parse_cache_dir: Path,
     max_single_file_bytes: int,
+    progress: Callable[[int, str | None], None] | None = None,
+    structure_complete_mode: bool = True,
+    max_ir_nodes_per_file: int = 250_000,
+    lift_version: str = "2",
 ) -> ParseRunResult:
     bundle = load_languages()
     lock = grammar_lock_hash()
@@ -58,14 +64,22 @@ def parse_manifest(
         if cache_file.exists():
             data = json.loads(cache_file.read_text(encoding="utf-8"))
             per_file[mf.rel_path] = FileParseArtifact.model_validate(data)
+            if progress:
+                progress(1, f"parse cached {mf.rel_path}")
             continue
         from tree_sitter import Parser
 
         parser = Parser()
         parser.language = lang
         tree = parser.parse(content)
-        nodes, edges, comments, diags = lift_tree(tree, mf.rel_path, content, mf.language_guess)
-        status: str = "OK"
+        if structure_complete_mode or lift_version == "2":
+            nodes, edges, comments, diags, truncated = lift_tree_v2(
+                tree, mf.rel_path, content, mf.language_guess, max_nodes=max_ir_nodes_per_file
+            )
+            status = "PARTIAL" if truncated else "OK"
+        else:
+            nodes, edges, comments, diags = lift_tree(tree, mf.rel_path, content, mf.language_guess)
+            status = "OK"
         if tree.root_node.has_error:
             status = "PARTIAL"
         art = FileParseArtifact(
@@ -81,4 +95,6 @@ def parse_manifest(
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(art.model_dump_json(), encoding="utf-8")
         per_file[mf.rel_path] = art
+        if progress:
+            progress(1, f"parsed {mf.rel_path}")
     return ParseRunResult(per_file=per_file, parser_lock_hash=lock)

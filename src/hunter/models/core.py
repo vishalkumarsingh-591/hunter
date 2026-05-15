@@ -96,8 +96,17 @@ class ScanConfig(BaseModel):
     neo4j_password: str = ""
     database_url: str = ""
     rule_pack_path: Path | None = None
-    graph_schema_version: str = "1"
+    graph_schema_version: str = "3"
     rule_timeout_seconds: float = 60.0
+    semantic_ir_v2_enabled: bool = False
+    resolver_interprocedural_enabled: bool = False
+    cfg_ssa_enabled: bool = False
+    taint_path_sensitive_enabled: bool = False
+    wp_semantics_v2_enabled: bool = False
+    security_popchain_enabled: bool = False
+    semantic_diff_enabled: bool = False
+    incremental_recompute_enabled: bool = False
+    neo4j_layered_write_enabled: bool = False
 
 
 class ScanResult(BaseModel):

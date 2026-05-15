@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from hunter.agents.deterministic import deterministic_hypothesis, deterministic_skeptic
-from hunter.agents.workflows.scan_workflow import run_langgraph_enrichment
 from hunter.confidence.engine import ConfidenceEngine
 from hunter.models.findings import CandidateFinding, EnrichedFinding
 from hunter.verify_static.engine import verify_finding
@@ -18,6 +17,8 @@ def enrich_findings(
     confidence_weights: Path | None = None,
 ) -> tuple[list[EnrichedFinding], list[dict]]:
     if agents_enabled:
+        from hunter.agents.workflows.scan_workflow import run_langgraph_enrichment
+
         return run_langgraph_enrichment(
             candidates,
             scan_id=scan_id,

@@ -13,7 +13,7 @@ _SANITIZER = re.compile(r"\b(esc_html|esc_attr|esc_url|wp_kses_post|sanitize_tex
 
 
 def augment_taint(g: InMemoryGraph, manifest: RepoManifest) -> None:
-    """Deterministic coarse taint anchors: sources, sinks, optional sanitizer flags per file."""
+    """Regex fallback taint when lift fact graph is disabled (HUNTER_REGEX_TAINT_FALLBACK_ENABLED)."""
     root = Path(manifest.root_path_norm)
     for mf in manifest.files:
         if mf.language_guess != "php":

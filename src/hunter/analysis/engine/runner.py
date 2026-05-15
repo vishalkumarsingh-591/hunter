@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 
 from hunter.analysis.rules.evaluators import EVALUATORS
-from hunter.analysis.rules.loader import RulePack, load_rule_pack, rule_pack_hash
+from hunter.analysis.rules.loader import RulePack, load_rule_pack, rule_pack_hash, schema_meets_minimum
 from hunter.graph.in_memory import InMemoryGraph
 from hunter.logging import get_logger
 from hunter.models.core import RepoManifest
@@ -27,7 +28,11 @@ class RuleEngine:
         self.pack_hash = rule_pack_hash(pack)
 
     def evaluate(
-        self, g: InMemoryGraph, manifest: RepoManifest
+        self,
+        g: InMemoryGraph,
+        manifest: RepoManifest,
+        *,
+        progress: Callable[[int, str | None], None] | None = None,
     ) -> tuple[list[CandidateFinding], list[RuleTelemetryRow]]:
         findings: list[CandidateFinding] = []
         telemetry: list[RuleTelemetryRow] = []
@@ -35,6 +40,20 @@ class RuleEngine:
 
         for rule in sorted(self.pack.rules, key=lambda r: r.id):
             t0 = time.perf_counter()
+            if not rule.enabled:
+                telemetry.append(
+                    RuleTelemetryRow(rule_id=rule.id, duration_ms=0, findings_count=0, status="RULE_DISABLED")
+                )
+                if progress:
+                    progress(1, f"rule {rule.id} disabled")
+                continue
+            if not schema_meets_minimum(g.schema_version, rule.min_graph_schema_version):
+                telemetry.append(
+                    RuleTelemetryRow(rule_id=rule.id, duration_ms=0, findings_count=0, status="RULE_SKIPPED_SCHEMA")
+                )
+                if progress:
+                    progress(1, f"rule {rule.id} skipped")
+                continue
             fn = EVALUATORS.get(rule.python_evaluator_id)
             if not fn:
                 telemetry.append(
@@ -49,6 +68,8 @@ class RuleEngine:
             dt = (time.perf_counter() - t0) * 1000
             telemetry.append(RuleTelemetryRow(rule_id=rule.id, duration_ms=dt, findings_count=len(found), status="OK"))
             _LOG.info("rule_executed", rule_id=rule.id, findings=len(found), duration_ms=dt)
+            if progress:
+                progress(1, f"rule {rule.id}")
         # dedupe by finding_id
         by_id = {f.finding_id: f for f in findings}
         return list(by_id.values()), telemetry
@@ -58,9 +79,13 @@ def run_analysis(
     g: InMemoryGraph,
     manifest: RepoManifest,
     pack_path: Path | None = None,
+    *,
+    pack: RulePack | None = None,
+    progress: Callable[[int, str | None], None] | None = None,
 ) -> tuple[list[CandidateFinding], RulePack, list[RuleTelemetryRow]]:
-    path = pack_path or Path(__file__).resolve().parents[1] / "rules" / "packs" / "default.yaml"
-    pack = load_rule_pack(path)
+    if pack is None:
+        path = pack_path or Path(__file__).resolve().parents[1] / "rules" / "packs" / "default.yaml"
+        pack = load_rule_pack(path)
     engine = RuleEngine(pack)
-    findings, tel = engine.evaluate(g, manifest)
+    findings, tel = engine.evaluate(g, manifest, progress=progress)
     return findings, pack, tel

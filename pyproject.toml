@@ -12,6 +12,7 @@ dependencies = [
   "pydantic>=2.6",
   "pydantic-settings>=2.2",
   "typer>=0.12",
+  "tqdm>=4.66",
   "structlog>=24.1",
   "PyYAML>=6.0",
   "sqlalchemy>=2.0",

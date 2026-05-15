@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -12,6 +12,14 @@ class RuleSpec(BaseModel):
     description: str = ""
     severity_band: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
     python_evaluator_id: str
+    min_graph_schema_version: str = "1"
+    enabled: bool = True
+    evaluator_params: dict[str, Any] = Field(default_factory=dict)
+
+
+def schema_meets_minimum(live: str, required: str) -> bool:
+    """Lexicographic compare for opaque schema version strings (e.g. '1', '2')."""
+    return live >= required
 
 
 class RulePack(BaseModel):

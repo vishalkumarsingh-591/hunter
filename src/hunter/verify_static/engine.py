@@ -24,12 +24,36 @@ def verify_finding(f: CandidateFinding) -> StaticVerificationResult:
             details={"anchors": len(f.anchors)},
         )
     )
+    checks.append(
+        VerificationCheck(
+            check_id="SEMANTIC_TRACE_PRESENT_OR_COARSE",
+            passed=bool(f.witness.semantic_trace)
+            or "coarse" in f.title_template_key
+            or "graph" in f.title_template_key,
+            details={"semantic_trace_len": len(f.witness.semantic_trace)},
+        )
+    )
+    checks.append(
+        VerificationCheck(
+            check_id="ANALYSIS_LIMITS_EXPLICIT_IF_PRESENT",
+            passed=all(isinstance(x, str) and x for x in f.witness.analysis_limits),
+            details={"analysis_limits": len(f.witness.analysis_limits)},
+        )
+    )
     if f.rule_id == "RULE-WP-AJAX-001":
         checks.append(
             VerificationCheck(
                 check_id="AJAX_NOPRIV_FLAG",
                 passed=f.wp_context.ajax_nopriv is True,
                 details={},
+            )
+        )
+    if f.witness.constraint_summary.get("approximate_flow"):
+        checks.append(
+            VerificationCheck(
+                check_id="APPROX_FLOW_ACKNOWLEDGED",
+                passed=None,
+                details={"approximate": True},
             )
         )
     refuted = any(c.passed is False for c in checks)

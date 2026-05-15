@@ -18,13 +18,47 @@ def deterministic_hypothesis(f: CandidateFinding) -> HypothesisAnnotation:
 
 
 def deterministic_skeptic(f: CandidateFinding) -> SkepticVerdict:
-    if f.rule_id in ("RULE-SQLI-001", "RULE-XSS-001"):
+    if f.witness.constraint_summary.get("approximate_flow"):
         return SkepticVerdict(
             target_finding_id=f.finding_id,
-            verdict="BLOCK_PROMOTION",
-            reason_codes=["COARSE_SAME_FILE_ORDERING", "NO_INTERPROCEDURAL_SOUNDNESS"],
+            verdict="DOWNGRADE",
+            reason_codes=["SAME_FILE_ORDERING_APPROX"],
             counter_evidence_refs=[],
-            promotion_blocked=True,
+            promotion_blocked=False,
+        )
+    if "interprocedural_heuristic" in f.witness.analysis_limits:
+        return SkepticVerdict(
+            target_finding_id=f.finding_id,
+            verdict="DOWNGRADE",
+            reason_codes=["INTERPROCEDURAL_HEURISTIC"],
+            counter_evidence_refs=[],
+            promotion_blocked=False,
+        )
+    if f.rule_id in ("RULE-SQLI-001", "RULE-XSS-001"):
+        if "coarse_taint_approximation" in f.witness.analysis_limits and f.witness.constraint_summary.get(
+            "unresolved_calls", 0
+        ):
+            return SkepticVerdict(
+                target_finding_id=f.finding_id,
+                verdict="BLOCK_PROMOTION",
+                reason_codes=["INTERPROCEDURAL_UNRESOLVED"],
+                counter_evidence_refs=[],
+                promotion_blocked=True,
+            )
+        if f.title_template_key.endswith(".graph_flow"):
+            return SkepticVerdict(
+                target_finding_id=f.finding_id,
+                verdict="ALLOW_PROMOTION",
+                reason_codes=["GRAPH_DERIVED_FLOW"],
+                counter_evidence_refs=[],
+                promotion_blocked=False,
+            )
+        return SkepticVerdict(
+            target_finding_id=f.finding_id,
+            verdict="DOWNGRADE",
+            reason_codes=["LEGACY_COARSE_TEMPLATE"],
+            counter_evidence_refs=[],
+            promotion_blocked=False,
         )
     return SkepticVerdict(
         target_finding_id=f.finding_id,

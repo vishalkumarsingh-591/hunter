@@ -4,14 +4,15 @@ import hashlib
 import json
 import uuid
 from pathlib import Path
+from typing import Protocol
 
 from hunter.agents.pipeline import enrich_findings
+from hunter.analysis.rules.loader import load_rule_pack, rule_pack_hash
 from hunter.analysis.engine.runner import run_analysis
-from hunter.analysis.rules.loader import rule_pack_hash
-from hunter.analysis.taint.simple import augment_taint
 from hunter.graph.builder import build_graph_from_parse
+from hunter.graph.build_pipeline import build_analysis_graph
 from hunter.graph.integrity import check_integrity
-from hunter.graph.neo4j_client import try_write_schema_meta
+from hunter.graph.neo4j_client import try_bulk_write_graph, try_write_schema_meta
 from hunter.ingest.snapshot_writer import write_repository_snapshot
 from hunter.ingest.walk import run_ingest
 from hunter.logging import get_logger, set_scan_context
@@ -24,14 +25,21 @@ from hunter.models.core import (
     SnapshotMode,
 )
 from hunter.observability.metrics import Metrics
+from hunter.orchestration.lineage import compute_lineage
 from hunter.parse.run import parse_manifest
 from hunter.persistence.database import ScanRow, init_db, session_scope
 from hunter.persistence.repositories import AuditRepository, ScanRepository
 from hunter.reporting.renderer import write_scan_outputs
 from hunter.settings import HunterSettings, hunter_build_version
-from hunter.wp.augment import augment_wordpress_semantics
-
 _LOG = get_logger("hunter.scan")
+
+
+class ProgressReporter(Protocol):
+    def reset(self, total: int, description: str | None = None) -> None: ...
+
+    def advance(self, step: int = 1, description: str | None = None) -> None: ...
+
+    def close(self) -> None: ...
 
 
 def _slug(root: Path) -> str:
@@ -66,7 +74,7 @@ class ScanRunner:
         self.metrics = Metrics()
         init_db(settings.database_url)
 
-    def run(self, config: ScanConfig) -> ScanResult:
+    def run(self, config: ScanConfig, progress: ProgressReporter | None = None) -> ScanResult:
         scan_id = config.scan_id or uuid.uuid4().hex
         trace_id = config.trace_id or scan_id
         set_scan_context(scan_id=scan_id, trace_id=trace_id)
@@ -99,25 +107,105 @@ class ScanRunner:
         )
         write_repository_snapshot(out, ingest.manifest, ingest, snap_mode)
         parse_dir = out / "cache" / "parse"
+        parseable_files = sum(
+            1
+            for mf in ingest.manifest.files
+            if mf.parse_policy == "parse" and mf.language_guess in ("php", "javascript", "html")
+        )
+        rule_pack_path = config.rule_pack_path or Path(__file__).resolve().parents[1] / "analysis" / "rules" / "packs" / "default.yaml"
+        rule_pack = load_rule_pack(rule_pack_path)
+        if progress:
+            fixed_steps = 11  # includes apply_layers (always on)
+            optional_steps = 0
+            optional_steps += int(config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled)
+            optional_steps += int(config.cfg_ssa_enabled and (config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled))
+            optional_steps += int(config.security_popchain_enabled)
+            optional_steps += int(config.semantic_diff_enabled or config.incremental_recompute_enabled)
+            progress.reset(parseable_files + len(rule_pack.rules) + fixed_steps + optional_steps, f"scan {slug}")
+            progress.advance(1, "ingest complete")
+            progress.advance(1, "snapshot written")
         parse = parse_manifest(
             ingest.manifest,
             parse_cache_dir=parse_dir,
             max_single_file_bytes=quotas.max_single_file_bytes,
+            progress=(lambda step, description=None: progress.advance(step, description) if progress else None),
+            structure_complete_mode=self.settings.parse_structure_complete_mode,
+            max_ir_nodes_per_file=self.settings.parse_max_ir_nodes_per_file,
+            lift_version=self.settings.lift_version,
         )
+        if progress and parseable_files == 0:
+            progress.advance(1, "parse complete")
         gbuild = build_graph_from_parse(ingest.manifest, parse, self.settings.graph_schema_version)
         g = gbuild.graph
-        augment_wordpress_semantics(g, ingest.manifest)
-        augment_taint(g, ingest.manifest)
-        findings, pack, _tel = run_analysis(g, ingest.manifest, config.rule_pack_path)
+        if progress:
+            progress.advance(1, "graph built")
+        pipe = build_analysis_graph(
+            g,
+            ingest.manifest,
+            parse,
+            self.settings,
+            wp_semantics_v2=config.wp_semantics_v2_enabled,
+            resolver_enabled=config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled,
+            cfg_ssa_enabled=config.cfg_ssa_enabled,
+            taint_path_sensitive=config.taint_path_sensitive_enabled,
+            security_popchain=config.security_popchain_enabled,
+            regex_taint_fallback=self.settings.regex_taint_fallback_enabled,
+            structural_stats=gbuild.structural_stats,
+        )
+        if gbuild.structural_stats:
+            st = gbuild.structural_stats
+            _LOG.info(
+                "phase1_structural",
+                functions=st.functions,
+                methods=st.methods,
+                classes=st.classes,
+                callsites=st.callsites,
+                truncated_files=st.truncated_files,
+            )
+        if progress:
+            progress.advance(1, "wp semantics")
+            progress.advance(1, "taint")
+            if config.security_popchain_enabled:
+                progress.advance(1, "security advanced")
+            progress.advance(1, "layers applied")
+        _LOG.info(
+            "graph_pipeline_complete",
+            wp_hooks=pipe.wp_hooks,
+            security_signals=pipe.security_signals,
+            interprocedural_edges=pipe.interprocedural_edges,
+        )
+        findings, pack, _tel = run_analysis(
+            g,
+            ingest.manifest,
+            config.rule_pack_path,
+            pack=rule_pack,
+            progress=(lambda step, description=None: progress.advance(step, description) if progress else None),
+        )
         rph = rule_pack_hash(pack)
         integrity_ok, issues = check_integrity(g)
+        if progress:
+            progress.advance(1, "analysis complete")
         sg = out / "semantic_graph"
         g.export_jsonl(sg)
         ir_dir = sg / "ir_exports"
         ir_dir.mkdir(parents=True, exist_ok=True)
+        # Log node type distribution for debugging (nodes use singular "label")
+        node_types: dict[str, int] = {}
+        for _nid, n in g.nodes.items():
+            lab = n.get("label")
+            if lab:
+                ls = str(lab)
+                node_types[ls] = node_types.get(ls, 0) + 1
+        _LOG.info("phase2_graph_export", total_nodes=len(g.nodes), node_types=node_types, total_edges=len(g.edges))
         for rel, art in parse.per_file.items():
             safe = rel.replace("\\", "_").replace("/", "__")
             (ir_dir / f"{safe}.json").write_text(art.model_dump_json(), encoding="utf-8")
+        if config.semantic_diff_enabled or config.incremental_recompute_enabled:
+            lineage = compute_lineage(out, ingest.manifest)
+            self.metrics.inc("semantic_diff_added_files", len(lineage.semantic_diff.added_files))
+            self.metrics.inc("semantic_diff_changed_files", len(lineage.semantic_diff.changed_files))
+            if progress:
+                progress.advance(1, "semantic diff")
         try_write_schema_meta(
             self.settings.neo4j_uri,
             self.settings.neo4j_user,
@@ -125,6 +213,16 @@ class ScanRunner:
             g.snapshot_id,
             self.settings.graph_schema_version,
         )
+        if config.neo4j_layered_write_enabled:
+            try_bulk_write_graph(
+                self.settings.neo4j_uri,
+                self.settings.neo4j_user,
+                self.settings.neo4j_password,
+                g,
+                batch_size=self.settings.graph_batch_size,
+            )
+        if progress:
+            progress.advance(1, "schema meta")
         enriched, trace = enrich_findings(
             findings,
             scan_id=scan_id,
@@ -132,6 +230,8 @@ class ScanRunner:
             agents_enabled=config.agents_enabled,
             confidence_weights=self.settings.confidence_weights_path,
         )
+        if progress:
+            progress.advance(1, "confidence")
         det = DeterminismMeta(
             replay_token=_replay_token(
                 ingest.manifest.manifest_sha256,
@@ -160,7 +260,11 @@ class ScanRunner:
             enriched=enriched,
             reasoning_trace=trace,
             graph_integrity_ok=integrity_ok,
+            settings=self.settings,
         )
+        if progress:
+            progress.advance(1, "reporting")
+            progress.close()
         log_path = out / "logs" / f"scan-{scan_id}.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         summary = {
@@ -211,7 +315,11 @@ class ScanRunner:
         )
 
 
-def run_scan(plugin_path: Path, settings: HunterSettings | None = None) -> ScanResult:
+def run_scan(
+    plugin_path: Path,
+    settings: HunterSettings | None = None,
+    progress: ProgressReporter | None = None,
+) -> ScanResult:
     s = settings or HunterSettings.load()
     cfg = ScanConfig(
         plugin_root=plugin_path,
@@ -231,5 +339,14 @@ def run_scan(plugin_path: Path, settings: HunterSettings | None = None) -> ScanR
         rule_pack_path=s.rule_pack_path,
         graph_schema_version=s.graph_schema_version,
         rule_timeout_seconds=s.rule_timeout_seconds,
+        semantic_ir_v2_enabled=s.semantic_ir_v2_enabled,
+        resolver_interprocedural_enabled=s.resolver_interprocedural_enabled,
+        cfg_ssa_enabled=s.cfg_ssa_enabled,
+        taint_path_sensitive_enabled=s.taint_path_sensitive_enabled,
+        wp_semantics_v2_enabled=s.wp_semantics_v2_enabled,
+        security_popchain_enabled=s.security_popchain_enabled,
+        semantic_diff_enabled=s.semantic_diff_enabled,
+        incremental_recompute_enabled=s.incremental_recompute_enabled,
+        neo4j_layered_write_enabled=s.neo4j_layered_write_enabled,
     )
-    return ScanRunner(s).run(cfg)
+    return ScanRunner(s).run(cfg, progress=progress)

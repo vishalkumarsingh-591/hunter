@@ -41,14 +41,32 @@ class ConfidenceEngine:
         graph_integrity_ok: bool,
     ) -> dict[str, float | bool]:
         witness_len = float(len(f.witness.summary_hops))
+        semantic_trace_len = float(len(f.witness.semantic_trace))
+        constraint_strength = float(f.witness.constraint_summary.get("constraint_strength", 0.0) or 0.0)
+        has_limits = bool(f.witness.analysis_limits)
+        sql_prepare = bool(f.witness.constraint_summary.get("sql_prepare_on_path"))
+        graph_derived = bool(f.witness.semantic_trace) and any(
+            t.startswith("graph:") for t in f.witness.semantic_trace
+        )
+        approximate_flow = bool(f.witness.constraint_summary.get("approximate_flow"))
+        lift_derived = "lift_derived_flow" in f.witness.semantic_trace
         return {
             "witness_shortest_len": witness_len,
-            "sanitizer_on_all_paths": False,
-            "dynamic_call_unresolved_on_path": "approx" in " ".join(f.witness.path_edges),
+            "semantic_trace_len": semantic_trace_len,
+            "constraint_strength": constraint_strength / 100.0 if constraint_strength > 1 else constraint_strength,
+            "sanitizer_on_all_paths": sql_prepare,
+            "dynamic_call_unresolved_on_path": int(f.witness.constraint_summary.get("unresolved_calls", 0) or 0) > 0,
+            "analysis_limits_present": has_limits,
+            "graph_derived_witness": graph_derived,
+            "missing_guard_signal": "MISSING_GUARD" in " ".join(f.witness.semantic_trace)
+            or f.rule_id.startswith("RULE-WP-REST"),
             "ajax_nopriv_true": f.wp_context.ajax_nopriv,
             "skeptic_block_promotion": bool(skeptic and skeptic.promotion_blocked),
             "static_verifier_refuted": verification.status == "REFUTED",
             "graph_integrity_ok": graph_integrity_ok,
+            "approximate_flow": approximate_flow,
+            "lift_derived_flow": lift_derived,
+            "graph_integrity_failed": not graph_integrity_ok,
         }
 
     def score(

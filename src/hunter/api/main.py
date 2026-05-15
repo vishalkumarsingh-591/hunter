@@ -65,6 +65,16 @@ def create_scan(body: ScanRequest) -> ScanResponse:
         database_url=settings.database_url,
         rule_pack_path=settings.rule_pack_path,
         graph_schema_version=settings.graph_schema_version,
+        rule_timeout_seconds=settings.rule_timeout_seconds,
+        semantic_ir_v2_enabled=settings.semantic_ir_v2_enabled,
+        resolver_interprocedural_enabled=settings.resolver_interprocedural_enabled,
+        cfg_ssa_enabled=settings.cfg_ssa_enabled,
+        taint_path_sensitive_enabled=settings.taint_path_sensitive_enabled,
+        wp_semantics_v2_enabled=settings.wp_semantics_v2_enabled,
+        security_popchain_enabled=settings.security_popchain_enabled,
+        semantic_diff_enabled=settings.semantic_diff_enabled,
+        incremental_recompute_enabled=settings.incremental_recompute_enabled,
+        neo4j_layered_write_enabled=settings.neo4j_layered_write_enabled,
     )
     runner = ScanRunner(settings)
     result = runner.run(cfg)

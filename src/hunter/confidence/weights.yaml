@@ -1,12 +1,20 @@
 version: "1"
 weights:
   witness_shortest_len: -0.002
+  semantic_trace_len: 0.01
+  constraint_strength: 0.25
   sanitizer_on_all_paths: 0.15
   dynamic_call_unresolved_on_path: -0.1
+  analysis_limits_present: -0.2
+  graph_derived_witness: 0.08
+  missing_guard_signal: -0.05
   ajax_nopriv_true: -0.12
   skeptic_block_promotion: -0.4
   static_verifier_refuted: -0.5
   graph_integrity_ok: 0.05
+  approximate_flow: -0.25
+  lift_derived_flow: -0.15
+  graph_integrity_failed: -0.1
 thresholds:
   VERY_HIGH: 0.85
   HIGH: 0.65

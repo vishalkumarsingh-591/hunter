@@ -15,6 +15,9 @@ class Witness(BaseModel):
     path_edges: list[str] = Field(default_factory=list)
     summary_hops: list[WitnessHop] = Field(default_factory=list)
     taint_labels: list[str] = Field(default_factory=list)
+    semantic_trace: list[str] = Field(default_factory=list)
+    constraint_summary: dict[str, int | float | bool | str] = Field(default_factory=dict)
+    analysis_limits: list[str] = Field(default_factory=list)
 
 
 class WPContextFeatures(BaseModel):

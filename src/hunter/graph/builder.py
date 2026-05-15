@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from hunter.graph.in_memory import InMemoryGraph
 from hunter.graph.integrity import check_integrity
+from hunter.graph.structural_import import StructuralImportStats, import_structural
 from hunter.models.core import RepoManifest
 from hunter.models.ir import ParseRunResult
 
@@ -14,6 +15,7 @@ class GraphBuildResult:
     graph: InMemoryGraph
     integrity_ok: bool
     integrity_issues: list[str]
+    structural_stats: StructuralImportStats | None = None
 
 
 def _snapshot_id(manifest_sha256: str, parser_lock: str) -> str:
@@ -63,5 +65,6 @@ def build_graph_from_parse(
                 },
             )
             g.add_edge(fid, "CONTAINS_IR", gid, {})
+    struct_stats = import_structural(g, parse)
     ok, issues = check_integrity(g)
-    return GraphBuildResult(graph=g, integrity_ok=ok, integrity_issues=issues)
+    return GraphBuildResult(graph=g, integrity_ok=ok, integrity_issues=issues, structural_stats=struct_stats)
