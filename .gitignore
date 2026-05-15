@@ -19,5 +19,17 @@ build/
 .vscode/
 coverage.xml
 htmlcov/
-.cursor/phases/
-.cursor/plans/
+
+# Cursor IDE local state
+.cursor/
+
+# Optional web UI (Vite / npm)
+web/node_modules/
+web/dist/
+
+# Local SQLite DB files (e.g. dashboard dev DB)
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
