@@ -17,13 +17,10 @@ build/
 *.log
 .idea/
 .vscode/
+.cursor/
 coverage.xml
 htmlcov/
-.cursor/
-# Cursor IDE local state
-.cursor/
-
-# Optional web UI (Vite / npm)
+# Optional web UI (ite / npm)
 web/node_modules/
 web/dist/
 
