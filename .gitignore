@@ -19,7 +19,7 @@ build/
 .vscode/
 coverage.xml
 htmlcov/
-
+.cursor/
 # Cursor IDE local state
 .cursor/
 
