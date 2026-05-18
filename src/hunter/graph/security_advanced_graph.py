@@ -7,7 +7,7 @@ from hunter.graph.in_memory import InMemoryGraph
 
 def augment_security_from_graph(g: InMemoryGraph) -> int:
     count = 0
-    for nid, n in g.nodes.items():
+    for nid, n in list(g.nodes.items()):
         if n.get("label") != "Sink":
             continue
         kind = str(n.get("kind", ""))

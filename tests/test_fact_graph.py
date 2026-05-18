@@ -49,6 +49,22 @@ def test_analysis_modules_avoid_plugin_read_text() -> None:
     assert not offenders, f"analysis still reads plugin files: {offenders}"
 
 
+def test_augment_security_from_graph_safe_while_adding_nodes() -> None:
+    """Regression: upsert_node during node iteration must not mutate dict mid-loop."""
+    from hunter.graph.security_advanced_graph import augment_security_from_graph
+
+    g = InMemoryGraph(snapshot_id="snap1", schema_version="3")
+    fid = "file:snap1:plugin.php"
+    g.upsert_node(fid, "File", {"file": "plugin.php"})
+    for i, kind in enumerate(("OBJECT_INJECTION", "CODE_EXEC", "UPLOAD")):
+        g.upsert_node(f"sink:{i}", "Sink", {"kind": kind, "file": "plugin.php", "line": i + 1})
+
+    count = augment_security_from_graph(g)
+    assert count == 3
+    signals = [n for n in g.nodes.values() if n.get("label") == "SecuritySignal"]
+    assert len(signals) == 3
+
+
 def test_sqli_graph_evaluator_on_minimal_fixture() -> None:
     from hunter.graph.builder import build_graph_from_parse
     from hunter.graph.build_pipeline import build_analysis_graph
