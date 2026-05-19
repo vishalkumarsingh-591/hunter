@@ -20,6 +20,22 @@ _TEXT_EXT = {".php", ".phtml", ".inc"}
 _JS_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
 _HTML_EXT = {".html", ".htm"}
 
+_JS_BUNDLE_MAX_BYTES = 200 * 1024
+_JS_BUNDLE_NAME_HINTS = ("vendor", "bundle", "chunk", "polyfill", ".min.")
+
+
+def _looks_like_minified_or_bundle(path: Path, size: int) -> bool:
+    """Heuristic: minified/webpack bundles are too big and dense for the AST walker.
+
+    These are almost never plugin source we care about (jQuery vendor copies, webpack
+    output, etc.) and they hang the lift step. We skip them at ingest time so the parser
+    never sees them.
+    """
+    if size > _JS_BUNDLE_MAX_BYTES:
+        return True
+    lower = path.name.lower()
+    return any(hint in lower for hint in _JS_BUNDLE_NAME_HINTS)
+
 
 def _language_guess(path: Path) -> str:
     suf = path.suffix.lower()
@@ -144,6 +160,27 @@ def run_ingest(root: Path, quotas: QuotaConfig) -> IngestResult:
                         size=st.st_size,
                         mtime_ns=getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
                         language_guess="other",
+                        parse_policy="skip_size",
+                    )
+                )
+                continue
+            entry_suffix = entry.suffix.lower()
+            if entry_suffix in _JS_EXT and _looks_like_minified_or_bundle(entry, st.st_size):
+                diagnostics.append(
+                    IngestDiagnostic(
+                        path=child_rel,
+                        code="JS_BUNDLE_SKIPPED",
+                        message="skipped: minified/webpack JS bundle (>200KB or vendor/bundle/min name)",
+                    )
+                )
+                files.append(
+                    RepoManifestFile(
+                        rel_path=child_rel,
+                        abs_path_norm=str(entry.resolve()),
+                        sha256="",
+                        size=st.st_size,
+                        mtime_ns=getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+                        language_guess="javascript",
                         parse_policy="skip_size",
                     )
                 )
