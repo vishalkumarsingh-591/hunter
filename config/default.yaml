@@ -72,3 +72,13 @@ reporting:
 observability:
   otel_enabled: false
   log_level: "INFO"
+
+dashboard:
+  workspace_root: "./workspaces"
+  parse_cache_root: "./workspaces/cache/parse"
+  github_token: ""  # or HUNTER_GITHUB_TOKEN
+  fast_scan: true  # lighter analysis for UI scans (much faster)
+  persist_findings: false  # disk reports are canonical; set true to mirror findings into DB
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
