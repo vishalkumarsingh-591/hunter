@@ -20,9 +20,12 @@ build/
 .cursor/
 coverage.xml
 htmlcov/
-# Optional web UI (ite / npm)
+# Optional web UI (vite / npm)
 web/node_modules/
 web/dist/
+dashboard/node_modules/
+dashboard/dist/
+workspaces/
 
 # Local SQLite DB files (e.g. dashboard dev DB)
 *.sqlite3

@@ -107,6 +107,8 @@ class ScanConfig(BaseModel):
     semantic_diff_enabled: bool = False
     incremental_recompute_enabled: bool = False
     neo4j_layered_write_enabled: bool = False
+    dashboard_meta: dict[str, str] = Field(default_factory=dict)
+    persist_findings_to_db: bool = True
 
 
 class ScanResult(BaseModel):

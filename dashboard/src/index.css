@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/*
+  Theme system
+  ------------
+  Light + dark are driven entirely by CSS variables that Tailwind v4 picks up via @theme.
+  Toggle by setting `data-theme="dark"` (or "light") on <html>. The brand colors stay
+  constant; only the surfaces and text shift. Sidebar keeps its premium navy gradient
+  in both themes (it's our identity color).
+*/
+
+/* Make `dark:` variants trigger from our data-theme attribute. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-brand-navy: #0b1f3a;
+  --color-brand-navy-light: #132d52;
+  --color-brand-navy-muted: #1e3a5f;
+  --color-brand-orange: #f57c20;
+  --color-brand-orange-hover: #e86f10;
+  --color-brand-orange-soft: var(--surface-accent-soft);
+
+  --color-surface: var(--surface-bg);
+  --color-card: var(--surface-card);
+  --color-card-elevated: var(--surface-card-elevated);
+  --color-fg: var(--text-primary);
+  --color-fg-muted: var(--text-muted);
+  --color-fg-subtle: var(--text-subtle);
+  --color-muted: var(--text-muted);
+  --color-border: var(--surface-border);
+  --color-border-strong: var(--surface-border-strong);
+
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+:root,
+[data-theme="light"] {
+  --surface-bg: #f4f7fb;
+  --surface-card: #ffffff;
+  --surface-card-elevated: #ffffff;
+  --surface-border: #e2e8f0;
+  --surface-border-strong: #cbd5e1;
+  --surface-accent-soft: #fff4eb;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 4px 14px -4px rgb(15 23 42 / 0.06);
+  --body-bg: linear-gradient(160deg, #0b1f3a 0%, #0a1628 45%, #061018 100%);
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #e2e8f0;
+  --recharts-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --surface-bg: #0a1426;
+  --surface-card: #111c33;
+  --surface-card-elevated: #16243f;
+  --surface-border: #1f2f4d;
+  --surface-border-strong: #2c4067;
+  --surface-accent-soft: #2a1c0d;
+  --text-primary: #e6edf6;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.4);
+  --body-bg: radial-gradient(circle at top left, #122347 0%, #050b18 60%);
+  --tooltip-bg: #111c33;
+  --tooltip-border: #1f2f4d;
+  --recharts-bg: #111c33;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --surface-bg: #0a1426;
+    --surface-card: #111c33;
+    --surface-card-elevated: #16243f;
+    --surface-border: #1f2f4d;
+    --surface-border-strong: #2c4067;
+    --surface-accent-soft: #2a1c0d;
+    --text-primary: #e6edf6;
+    --text-muted: #94a3b8;
+    --text-subtle: #64748b;
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 8px 24px -8px rgb(0 0 0 / 0.4);
+    --body-bg: radial-gradient(circle at top left, #122347 0%, #050b18 60%);
+    --tooltip-bg: #111c33;
+    --tooltip-border: #1f2f4d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--body-bg);
+  background-attachment: fixed;
+  min-height: 100vh;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Smooth color transitions when toggling theme */
+.theme-transition,
+.theme-transition * {
+  transition: background-color 240ms ease, color 240ms ease, border-color 240ms ease,
+    box-shadow 240ms ease, fill 240ms ease, stroke 240ms ease;
+}
+
+/* Recharts dark-mode legibility */
+.recharts-text {
+  fill: var(--text-muted);
+}
+.recharts-default-tooltip {
+  background-color: var(--tooltip-bg) !important;
+  border-color: var(--tooltip-border) !important;
+  color: var(--text-primary) !important;
+  border-radius: 8px !important;
+}
+.recharts-tooltip-item {
+  color: var(--text-primary) !important;
+}
+.recharts-cartesian-grid line {
+  stroke: var(--surface-border);
+}
+.recharts-cartesian-axis-tick-value tspan {
+  fill: var(--text-muted);
+}
+
+/* Custom scrollbar (subtle) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
+}
+
+/* Animated gradient accent (used by hero banners) */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.gradient-shift {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* Card hover lift */
+.card-hover {
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px -10px rgb(15 23 42 / 0.18);
+  border-color: var(--color-brand-orange);
+}

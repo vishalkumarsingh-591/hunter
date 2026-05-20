@@ -26,6 +26,7 @@ from hunter.models.core import (
 )
 from hunter.observability.metrics import Metrics
 from hunter.orchestration.lineage import compute_lineage
+from hunter.orchestration.scan_status import write_scan_status
 from hunter.parse.run import parse_manifest
 from hunter.persistence.database import ScanRow, init_db, session_scope
 from hunter.persistence.repositories import AuditRepository, ScanRepository
@@ -80,10 +81,69 @@ class ScanRunner:
         set_scan_context(scan_id=scan_id, trace_id=trace_id)
         root = config.plugin_root.resolve()
         slug = _slug(root)
-        out = (config.output_root / slug).resolve()
+        # Isolate each scan so re-uploading the same plugin slug does not overwrite prior results.
+        out = (config.output_root / slug / scan_id).resolve()
         out.mkdir(parents=True, exist_ok=True)
+        shared_cache = self.settings.parse_cache_root
+        shared_cache.mkdir(parents=True, exist_ok=True)
+
+        def _status(stage: str, detail: str = "", pct: float | None = None) -> None:
+            write_scan_status(
+                out,
+                scan_id=scan_id,
+                status="RUNNING",
+                stage=stage,
+                detail=detail,
+                progress_pct=pct,
+            )
+
+        try:
+            return self._run_pipeline(
+                config=config,
+                scan_id=scan_id,
+                trace_id=trace_id,
+                root=root,
+                slug=slug,
+                out=out,
+                parse_cache_dir=shared_cache,
+                progress=progress,
+                status_cb=_status,
+            )
+        except Exception as exc:  # noqa: BLE001
+            write_scan_status(
+                out,
+                scan_id=scan_id,
+                status="FAILED",
+                stage="failed",
+                detail=str(exc),
+                error=str(exc),
+            )
+            if self.settings.database_url:
+                try:
+                    with session_scope() as s:
+                        ScanRepository(s).mark_failed(scan_id, str(exc))
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
+
+    def _run_pipeline(
+        self,
+        *,
+        config: ScanConfig,
+        scan_id: str,
+        trace_id: str,
+        root: Path,
+        slug: str,
+        out: Path,
+        parse_cache_dir: Path,
+        progress: ProgressReporter | None,
+        status_cb,
+    ) -> ScanResult:
         self.metrics.inc("scans_started")
         _LOG.info("scan_started", scan_id=scan_id, plugin=str(root))
+        # Record the in-progress output_dir to the status file BEFORE entering the DB
+        # block so the API can locate live progress even on the first poll.
+        status_cb("ingest", "Reading plugin files…", 5)
         if self.settings.database_url:
             try:
                 with session_scope() as s:
@@ -94,6 +154,9 @@ class ScanRunner:
                             plugin_slug=slug,
                             root_path_hash=h,
                             status="RUNNING",
+                            source_type=config.dashboard_meta.get("source_type", "local"),
+                            source_label=config.dashboard_meta.get("source_label"),
+                            output_dir=str(out),
                         )
                     )
                     AuditRepository(s).append("scan_started", scan_id, {"plugin": str(root)})
@@ -102,16 +165,21 @@ class ScanRunner:
 
         quotas = config.quotas
         ingest = run_ingest(root, quotas)
+        status_cb("snapshot", "Saving repository snapshot…", 10)
         snap_mode = (
             SnapshotMode.copy if self.settings.snapshot_mode != "manifest-only" else SnapshotMode.manifest_only
         )
         write_repository_snapshot(out, ingest.manifest, ingest, snap_mode)
-        parse_dir = out / "cache" / "parse"
         parseable_files = sum(
             1
             for mf in ingest.manifest.files
             if mf.parse_policy == "parse" and mf.language_guess in ("php", "javascript", "html")
         )
+        if parseable_files == 0:
+            raise RuntimeError(
+                "Scan did not find any parseable PHP/JS/HTML files in the source. "
+                "Check that the upload contains a real WordPress plugin/theme."
+            )
         rule_pack_path = config.rule_pack_path or Path(__file__).resolve().parents[1] / "analysis" / "rules" / "packs" / "default.yaml"
         rule_pack = load_rule_pack(rule_pack_path)
         if progress:
@@ -124,17 +192,31 @@ class ScanRunner:
             progress.reset(parseable_files + len(rule_pack.rules) + fixed_steps + optional_steps, f"scan {slug}")
             progress.advance(1, "ingest complete")
             progress.advance(1, "snapshot written")
+        status_cb("parse", f"Parsing {parseable_files} files…", 20)
+
+        def _parse_progress(step: int, description: str | None = None) -> None:
+            if progress:
+                progress.advance(step, description)
+            if description and parseable_files:
+                # rough parse progress 20–55%
+                done = min(parseable_files, getattr(_parse_progress, "_n", 0) + step)  # type: ignore[attr-defined]
+                _parse_progress._n = done  # type: ignore[attr-defined]
+                pct = 20 + (35 * done / max(parseable_files, 1))
+                status_cb("parse", description, pct)
+
+        _parse_progress._n = 0  # type: ignore[attr-defined]
         parse = parse_manifest(
             ingest.manifest,
-            parse_cache_dir=parse_dir,
+            parse_cache_dir=parse_cache_dir,
             max_single_file_bytes=quotas.max_single_file_bytes,
-            progress=(lambda step, description=None: progress.advance(step, description) if progress else None),
+            progress=_parse_progress,
             structure_complete_mode=self.settings.parse_structure_complete_mode,
             max_ir_nodes_per_file=self.settings.parse_max_ir_nodes_per_file,
             lift_version=self.settings.lift_version,
         )
         if progress and parseable_files == 0:
             progress.advance(1, "parse complete")
+        status_cb("graph", "Building security graph…", 55)
         gbuild = build_graph_from_parse(ingest.manifest, parse, self.settings.graph_schema_version)
         g = gbuild.graph
         if progress:
@@ -162,6 +244,7 @@ class ScanRunner:
                 callsites=st.callsites,
                 truncated_files=st.truncated_files,
             )
+        status_cb("analysis", "Running security rules…", 75)
         if progress:
             progress.advance(1, "wp semantics")
             progress.advance(1, "taint")
@@ -230,6 +313,7 @@ class ScanRunner:
             agents_enabled=config.agents_enabled,
             confidence_weights=self.settings.confidence_weights_path,
         )
+        status_cb("reporting", "Writing report…", 90)
         if progress:
             progress.advance(1, "confidence")
         det = DeterminismMeta(
@@ -279,9 +363,14 @@ class ScanRunner:
         if self.settings.database_url:
             try:
                 with session_scope() as s:
-                    sr = ScanRepository(s)
-                    sr.finish_scan(scan_id, "COMPLETED", g.snapshot_id, det.replay_token)
-                    sr.insert_findings(scan_id, [e.candidate.model_dump() for e in enriched])
+                    ScanRepository(s).finish_scan(
+                        scan_id,
+                        "COMPLETED",
+                        g.snapshot_id,
+                        det.replay_token,
+                        output_dir=str(out),
+                        findings_count=len(enriched),
+                    )
                     AuditRepository(s).append(
                         "report_emitted",
                         scan_id,
@@ -289,6 +378,23 @@ class ScanRunner:
                     )
             except Exception as exc:  # noqa: BLE001
                 _LOG.warning("persistence_finish_skipped", error=str(exc))
+            if enriched and config.persist_findings_to_db:
+                try:
+                    payloads = [e.candidate.model_dump() for e in enriched]
+                    batch = 200
+                    for i in range(0, len(payloads), batch):
+                        with session_scope() as s:
+                            ScanRepository(s).insert_findings(scan_id, payloads[i : i + batch])
+                except Exception as exc:  # noqa: BLE001
+                    _LOG.warning("persistence_findings_skipped", error=str(exc), count=len(enriched))
+        write_scan_status(
+            out,
+            scan_id=scan_id,
+            status="COMPLETED",
+            stage="complete",
+            detail=f"{len(enriched)} findings",
+            progress_pct=100,
+        )
         self.metrics.inc("scans_completed")
         _LOG.info("scan_completed", scan_id=scan_id, findings=len(enriched))
         return ScanResult(
