@@ -52,7 +52,9 @@ def test_connect_same_file_one_flow_per_sink() -> None:
     fid = "file:snap:test.php"
     g.upsert_node(fid, "File", {"path": "test.php"})
     for i, line in enumerate((10, 20, 30), start=1):
-        g.upsert_node(f"source:snap:test.php:{line}:0", "Source", {"line": line, "file": "test.php", "kind": "HTTP_SUPERGLOBAL"})
+        g.upsert_node(
+            f"source:snap:test.php:{line}:0", "Source", {"line": line, "file": "test.php", "kind": "HTTP_SUPERGLOBAL"}
+        )
         g.add_edge(fid, "HAS_SOURCE", f"source:snap:test.php:{line}:0", {})
     g.upsert_node("sink:snap:test.php:50:0", "Sink", {"line": 50, "file": "test.php", "kind": "FILE_INCLUDE"})
     g.add_edge(fid, "HAS_SINK", "sink:snap:test.php:50:0", {})
@@ -99,7 +101,11 @@ def test_lfi_skips_static_include_sink() -> None:
     g = InMemoryGraph(snapshot_id="snap", schema_version="3")
     fid = "file:snap:safe.php"
     g.upsert_node(fid, "File", {"path": "safe.php"})
-    g.upsert_node("source:snap:safe.php:5:0", "Source", {"line": 5, "file": "safe.php", "name": "$_GET", "kind": "HTTP_SUPERGLOBAL"})
+    g.upsert_node(
+        "source:snap:safe.php:5:0",
+        "Source",
+        {"line": 5, "file": "safe.php", "name": "$_GET", "kind": "HTTP_SUPERGLOBAL"},
+    )
     g.add_edge(fid, "HAS_SOURCE", "source:snap:safe.php:5:0", {})
     g.upsert_node(
         "sink:snap:safe.php:10:0",
@@ -116,7 +122,9 @@ def test_variable_include_produces_lfi_finding() -> None:
     g = InMemoryGraph(snapshot_id="snap", schema_version="3")
     fid = "file:snap:dyn.php"
     g.upsert_node(fid, "File", {"path": "dyn.php"})
-    g.upsert_node("source:snap:dyn.php:5:0", "Source", {"line": 5, "file": "dyn.php", "name": "$_GET", "kind": "HTTP_SUPERGLOBAL"})
+    g.upsert_node(
+        "source:snap:dyn.php:5:0", "Source", {"line": 5, "file": "dyn.php", "name": "$_GET", "kind": "HTTP_SUPERGLOBAL"}
+    )
     g.add_edge(fid, "HAS_SOURCE", "source:snap:dyn.php:5:0", {})
     g.upsert_node(
         "sink:snap:dyn.php:10:0",

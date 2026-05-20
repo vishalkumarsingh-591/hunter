@@ -24,6 +24,7 @@ def get_settings() -> HunterSettings:
 
 class ScanRequest(BaseModel):
     plugin_path: str
+    profile: str = "auto"
 
 
 class ScanResponse(BaseModel):
@@ -48,6 +49,7 @@ def create_scan(body: ScanRequest) -> ScanResponse:
 
     cfg = ScanConfig(
         plugin_root=p,
+        profile=body.profile,
         output_root=settings.output_root,
         scan_id=scan_id,
         trace_id=scan_id,
@@ -70,7 +72,6 @@ def create_scan(body: ScanRequest) -> ScanResponse:
         resolver_interprocedural_enabled=settings.resolver_interprocedural_enabled,
         cfg_ssa_enabled=settings.cfg_ssa_enabled,
         taint_path_sensitive_enabled=settings.taint_path_sensitive_enabled,
-        wp_semantics_v2_enabled=settings.wp_semantics_v2_enabled,
         security_popchain_enabled=settings.security_popchain_enabled,
         semantic_diff_enabled=settings.semantic_diff_enabled,
         incremental_recompute_enabled=settings.incremental_recompute_enabled,

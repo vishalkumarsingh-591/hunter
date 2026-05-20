@@ -20,6 +20,13 @@ def build_resolution_from_graph(g: InMemoryGraph) -> ResolutionResult:
         result.nodes.append(ResolutionNode(function_name=name, file_rel_path=file_rel, line=line))
         fn_index.setdefault(name, []).append((file_rel, line, nid))
 
+    callsite_targets: dict[str, str] = {}
+    for e in g.edges:
+        if e["rel"] == "CALLS_TARGET":
+            callee = str(g.nodes.get(e["dst"], {}).get("name", ""))
+            if callee:
+                callsite_targets[e["src"]] = callee
+
     for e in g.edges:
         if e["rel"] != "CALLS":
             continue
@@ -32,11 +39,7 @@ def build_resolution_from_graph(g: InMemoryGraph) -> ResolutionResult:
         caller = str(caller_n.get("name", ""))[:80]
         file_rel = str(call_n.get("file", ""))
         line = int(call_n.get("line", 0))
-        callee = None
-        for e2 in g.edges:
-            if e2["src"] == e["dst"] and e2["rel"] == "CALLS_TARGET":
-                callee = str(g.nodes.get(e2["dst"], {}).get("name", ""))
-                break
+        callee = callsite_targets.get(e["dst"])
         if callee and callee in fn_index:
             result.edges.append(
                 ResolutionEdge(

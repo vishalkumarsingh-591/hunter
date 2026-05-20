@@ -7,7 +7,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from hunter.contracts import FINDING_REPORT_SCHEMA_VERSION
-from hunter.models.core import DeterminismMeta, IngestResult, RepoManifest
+from hunter.analysis.rules.loader import RulePack
+from hunter.models.core import DeterminismMeta, IngestResult, RepoManifest, ScanResources
 from hunter.models.findings import EnrichedFinding
 from hunter.models.ir import ParseRunResult
 from hunter.reporting.grouping import (
@@ -17,9 +18,7 @@ from hunter.reporting.grouping import (
 )
 from hunter.settings import HunterSettings
 
-_SECRET_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*[^\s]+"),
-)
+_SECRET_PATTERNS = (re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*[^\s]+"),)
 
 
 def _redact(text: str) -> str:
@@ -43,6 +42,23 @@ def _render_group_section(g: SummaryGroup) -> list[str]:
     return lines
 
 
+def _build_owasp_summary(enriched: list[EnrichedFinding], rule_pack: RulePack | None) -> dict:
+    rule_meta: dict[str, dict] = {}
+    if rule_pack:
+        for r in rule_pack.rules:
+            rule_meta[r.id] = {"owasp_ids": list(r.owasp_ids), "cwe_ids": list(r.cwe_ids)}
+    by_owasp: dict[str, list[str]] = {}
+    for e in enriched:
+        meta = rule_meta.get(e.candidate.rule_id, {})
+        ids = meta.get("owasp_ids") or ["UNTAGGED"]
+        for oid in ids:
+            by_owasp.setdefault(oid, []).append(e.candidate.finding_id)
+    return {
+        "by_owasp": {k: {"count": len(v), "finding_ids": v[:50]} for k, v in sorted(by_owasp.items())},
+        "total_findings": len(enriched),
+    }
+
+
 def write_scan_outputs(
     output_dir: Path,
     *,
@@ -56,6 +72,9 @@ def write_scan_outputs(
     reasoning_trace: list[dict],
     graph_integrity_ok: bool,
     settings: HunterSettings | None = None,
+    rule_pack: RulePack | None = None,
+    scan_profile: str = "",
+    scan_resources: ScanResources | None = None,
 ) -> None:
     cfg = settings or HunterSettings.load()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -83,8 +102,11 @@ def write_scan_outputs(
         "schema_version": FINDING_REPORT_SCHEMA_VERSION,
         "scan_id": scan_id,
         "snapshot_id": snapshot_id,
+        "scan_profile": scan_profile or determinism.scan_profile,
+        "catalog_hash": determinism.catalog_hash,
         "replay_token": determinism.replay_token,
         "graph_integrity_ok": graph_integrity_ok,
+        "scan_resources": scan_resources.model_dump() if scan_resources else None,
         "findings": [e.model_dump() for e in enriched],
     }
     (output_dir / "reports" / "findings.json").write_text(
@@ -102,10 +124,22 @@ def write_scan_outputs(
     (output_dir / "reports" / "findings_compact.json").write_text(
         json.dumps(compact, indent=2, sort_keys=True), encoding="utf-8"
     )
+    owasp_summary = _build_owasp_summary(enriched, rule_pack)
+    owasp_payload = {
+        "scan_id": scan_id,
+        "scan_profile": scan_profile or determinism.scan_profile,
+        "catalog_hash": determinism.catalog_hash,
+        **owasp_summary,
+    }
+    (output_dir / "reports" / "summary_by_owasp.json").write_text(
+        json.dumps(owasp_payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     groups = build_summary_groups(enriched)
     exclude = set(cfg.reporting_summary_exclude_rules)
-    filtered = [g for g in groups if g.rule_id not in exclude and g.max_confidence >= cfg.reporting_summary_min_confidence]
+    filtered = [
+        g for g in groups if g.rule_id not in exclude and g.max_confidence >= cfg.reporting_summary_min_confidence
+    ]
     groups_payload = {
         "scan_id": scan_id,
         "total_candidates": len(enriched),
@@ -121,6 +155,8 @@ def write_scan_outputs(
         "",
         f"- scan_id: `{scan_id}`",
         f"- snapshot_id: `{snapshot_id}`",
+        f"- scan_profile: `{scan_profile or determinism.scan_profile}`",
+        f"- catalog_hash: `{determinism.catalog_hash}`",
         f"- graph_integrity_ok: `{graph_integrity_ok}`",
         f"- candidates: **{len(enriched)}**",
         f"- summary groups: **{len(filtered)}** (of {len(groups)} total)",
@@ -183,7 +219,7 @@ def write_scan_outputs(
                     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
                     lo = max(0, a.start_line - 1)
                     hi = min(len(lines), a.end_line + 3)
-                    snippet = "\n".join(f"{i+1}|{lines[i]}" for i in range(lo, hi))
+                    snippet = "\n".join(f"{i + 1}|{lines[i]}" for i in range(lo, hi))
                     excerpt_lines.append(_redact(snippet[:4000]))
                 except OSError:
                     excerpt_lines.append("")

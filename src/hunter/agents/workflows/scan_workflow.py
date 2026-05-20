@@ -47,9 +47,7 @@ def run_langgraph_enrichment(
             sk = deterministic_skeptic(c)
             ver = verify_finding(c)
             conf = engine.score(c, ver, sk, s["graph_integrity_ok"])
-            enriched.append(
-                EnrichedFinding(candidate=c, hypothesis=hyp, skeptic=sk, verification=ver, confidence=conf)
-            )
+            enriched.append(EnrichedFinding(candidate=c, hypothesis=hyp, skeptic=sk, verification=ver, confidence=conf))
         trace = list(s.get("reasoning_trace") or [])
         trace.append({"step": "finalize", "count": len(enriched)})
         return {"enriched": [e.model_dump() for e in enriched], "reasoning_trace": trace}

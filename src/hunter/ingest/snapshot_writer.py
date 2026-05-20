@@ -4,7 +4,19 @@ import json
 import shutil
 from pathlib import Path
 
+from hunter.concurrency.pool import run_threaded_map
 from hunter.models.core import IngestResult, RepoManifest, SnapshotMode
+
+
+def _copy_one_file(args: tuple[Path, Path]) -> None:
+    src, dst = args
+    if not src.is_file():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copy2(src, dst)
+    except OSError:
+        pass
 
 
 def write_repository_snapshot(
@@ -12,6 +24,8 @@ def write_repository_snapshot(
     manifest: RepoManifest,
     ingest_result: IngestResult,
     snapshot_mode: SnapshotMode,
+    *,
+    workers: int = 1,
 ) -> None:
     snap_dir = output_dir / "repository_snapshot"
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -34,15 +48,15 @@ def write_repository_snapshot(
         dest_root = snap_dir / "files_copy"
         dest_root.mkdir(exist_ok=True)
         root = Path(manifest.root_path_norm)
+        copy_jobs: list[tuple[Path, Path]] = []
         for f in manifest.files:
             if f.language_guess == "binary":
                 continue
             src = root / f.rel_path
             dst = dest_root / f.rel_path
-            if not src.is_file():
-                continue
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.copy2(src, dst)
-            except OSError:
-                pass
+            copy_jobs.append((src, dst))
+        if workers <= 1:
+            for job in copy_jobs:
+                _copy_one_file(job)
+        else:
+            run_threaded_map(copy_jobs, _copy_one_file, workers=workers)

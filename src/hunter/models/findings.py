@@ -20,6 +20,11 @@ class Witness(BaseModel):
     analysis_limits: list[str] = Field(default_factory=list)
 
 
+class ExposureContext(BaseModel):
+    surface: Literal["HTTP_PUBLIC", "HTTP_AUTH", "ADMIN", "CLI", "CRON", "UNKNOWN"] = "UNKNOWN"
+    framework: str = ""
+
+
 class WPContextFeatures(BaseModel):
     ajax_nopriv: bool = False
     rest_route_public: bool = False
@@ -47,6 +52,7 @@ class CandidateFinding(BaseModel):
     title_template_key: str
     anchors: list[LocationAnchor] = Field(default_factory=list)
     witness: Witness = Field(default_factory=Witness)
+    exposure_context: ExposureContext = Field(default_factory=ExposureContext)
     wp_context: WPContextFeatures = Field(default_factory=WPContextFeatures)
     determinism_meta_ref: str = ""  # points to scan-level DeterminismMeta.replay_token fragment
 

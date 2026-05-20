@@ -14,17 +14,29 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 @app.command("scan")
 def scan(
-    plugin_path: Path = typer.Argument(..., exists=True, file_okay=False, dir_okay=True, help="Path to WP plugin"),
+    plugin_path: Path = typer.Argument(
+        ..., exists=True, file_okay=False, dir_okay=True, help="Path to repository root"
+    ),
     config: Path | None = typer.Option(None, "--config", help="YAML config override"),
     output_root: Path | None = typer.Option(None, "--output-root", help="Override output directory root"),
+    profile: str | None = typer.Option(None, "--profile", help="Scan profile: auto, generic-php, wordpress, full"),
     agents: bool = typer.Option(False, "--agents/--no-agents", help="Enable LangGraph agent phase"),
     progress: bool = typer.Option(True, "--progress/--no-progress", help="Show a scan progress bar"),
+    workers: int | None = typer.Option(
+        None,
+        "--workers",
+        help="Parallel workers (0=auto, 1=serial). Overrides config scan.workers",
+    ),
 ) -> None:
-    """Run deterministic static analysis pipeline on a local plugin directory."""
+    """Run deterministic static analysis on a local PHP codebase directory."""
     settings = HunterSettings.load(config)
     if output_root is not None:
         settings = settings.model_copy(update={"output_root": output_root})
+    if profile is not None:
+        settings = settings.model_copy(update={"scan_profile": profile})
     settings = settings.model_copy(update={"agents_enabled": agents})
+    if workers is not None:
+        settings = settings.model_copy(update={"scan_workers": workers})
     configure_logging(settings.log_level, json_logs=True)
     if progress:
         bar = tqdm(total=0, desc=f"Scanning {plugin_path.name}", unit="step")

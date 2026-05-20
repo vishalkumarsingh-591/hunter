@@ -1,0 +1,10 @@
+catalog_id: wordpress-v1
+version: "1"
+languages: [php]
+patterns:
+  - label: Sink
+    pattern: "\\bwp_redirect\\s*\\("
+    props: {kind: REDIRECT, context: URL, api: wp_redirect}
+  - label: Sanitizer
+    pattern: "\\b(esc_html|esc_attr|esc_url|esc_js|wp_kses_post|sanitize_text_field|esc_url_raw|sanitize_file_name)\\s*\\("
+    props: {kind: SANITIZE, context: HTML}

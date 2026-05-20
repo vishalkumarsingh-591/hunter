@@ -13,10 +13,15 @@ from hunter.analysis.taint.simple import augment_taint
 from hunter.graph.in_memory import InMemoryGraph
 from hunter.graph.layers import apply_layers
 from hunter.graph.security_advanced_graph import augment_security_from_graph
-from hunter.graph.security_facts_catalog import SecurityFactsStats, augment_security_facts
+from hunter.graph.security_facts_catalog import (
+    SecurityFactsStats,
+    augment_security_facts,
+    connect_same_file_flows,
+)
+from hunter.graph.shard import parallel_augment_graph
 from hunter.graph.structural_import import StructuralImportStats
-from hunter.graph.wp_import import import_wordpress_semantics
-from hunter.models.core import RepoManifest
+from hunter.graph.wp_import import detect_entrypoints, run_platform_adapters
+from hunter.models.core import RepoManifest, ScanProfile
 from hunter.models.ir import ParseRunResult
 from hunter.settings import HunterSettings
 
@@ -54,7 +59,9 @@ def build_analysis_graph(
     parse: ParseRunResult,
     settings: HunterSettings,
     *,
-    wp_semantics_v2: bool = True,
+    profile: ScanProfile | None = None,
+    workers: int = 1,
+    wp_semantics_v2: bool = False,
     resolver_enabled: bool = True,
     cfg_ssa_enabled: bool = True,
     taint_path_sensitive: bool = True,
@@ -63,13 +70,40 @@ def build_analysis_graph(
     structural_stats: StructuralImportStats | None = None,
 ) -> GraphBuildPipelineResult:
     result = GraphBuildPipelineResult(structural_stats=structural_stats)
-    result.security_stats = augment_security_facts(
-        g,
-        parse,
-        max_same_file_flow_edges_per_file=settings.analysis_max_same_file_flow_edges_per_file,
-    )
-    if wp_semantics_v2:
-        result.wp_hooks = import_wordpress_semantics(g)
+    catalog_ids = profile.catalog_ids if profile else ["generic-php-v1"]
+    adapter_ids = list(profile.adapter_ids) if profile else []
+    if wp_semantics_v2 and "wordpress" not in adapter_ids:
+        adapter_ids.append("wordpress")
+    wp_enabled = "wordpress" in adapter_ids
+
+    if workers > 1:
+        aug = parallel_augment_graph(
+            g,
+            parse,
+            catalog_ids=catalog_ids,
+            workers=workers,
+            wp_enabled=wp_enabled,
+        )
+        result.structural_stats = aug.structural_stats
+        result.security_stats = aug.security_stats
+        connect_same_file_flows(
+            g,
+            max_edges_per_file=settings.analysis_max_same_file_flow_edges_per_file,
+        )
+        result.wp_hooks = aug.wp_hooks
+        if wp_enabled:
+            result.wp_hooks += detect_entrypoints(g, manifest)
+    else:
+        result.security_stats = augment_security_facts(
+            g,
+            parse,
+            catalog_ids=catalog_ids,
+            max_same_file_flow_edges_per_file=settings.analysis_max_same_file_flow_edges_per_file,
+        )
+        if adapter_ids:
+            adapter_results = run_platform_adapters(g, manifest, adapter_ids)
+            result.wp_hooks = adapter_results.get("wordpress", 0)
+
     if security_popchain:
         result.security_signals = augment_security_from_graph(g)
 

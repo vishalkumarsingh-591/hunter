@@ -2,7 +2,7 @@
 
 output:
   root: "./output"
-  snapshot_mode: "copy"  # copy | manifest-only
+  snapshot_mode: "manifest-only"  # copy | manifest-only
 
 ingest:
   max_files: 50000
@@ -17,8 +17,13 @@ parse:
   structure_complete_mode: true
   max_ir_nodes_per_file: 250000
 
+scan:
+  profile: auto  # auto | generic-php | wordpress | full
+  workers: 0  # 0 = auto from CPU/RAM; 1 = serial; explicit N = expert override
+  max_inflight: 0  # 0 = auto from workers and RAM
+
 graph:
-  schema_version: "3"
+  schema_version: "3.1"
   batch_size: 500
   neo4j_uri: ""  # set HUNTER_NEO4J_URI or env NEO4J_URI
   neo4j_user: "neo4j"

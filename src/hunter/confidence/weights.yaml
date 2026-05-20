@@ -20,3 +20,10 @@ thresholds:
   HIGH: 0.65
   MEDIUM: 0.45
   LOW: 0.25
+profiles:
+  generic-php:
+    weights:
+      ajax_nopriv_true: 0.0
+      analysis_limits_present: -0.15
+  wordpress:
+    weights: {}

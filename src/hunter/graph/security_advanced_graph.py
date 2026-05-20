@@ -16,12 +16,16 @@ def augment_security_from_graph(g: InMemoryGraph) -> int:
         fid = f"file:{g.snapshot_id}:{file_rel}"
         if kind == "OBJECT_INJECTION":
             sig = f"objinj:{nid}"
-            g.upsert_node(sig, "SecuritySignal", {"signal": "OBJECT_INJECTION_ENTRYPOINT", "file": file_rel, "line": line})
+            g.upsert_node(
+                sig, "SecuritySignal", {"signal": "OBJECT_INJECTION_ENTRYPOINT", "file": file_rel, "line": line}
+            )
             g.add_edge(fid, "HAS_SECURITY_SIGNAL", sig, {})
             count += 1
         elif kind == "CODE_EXEC":
             sig = f"dang:{nid}"
-            g.upsert_node(sig, "SecuritySignal", {"signal": "REACHABLE_DANGEROUS_SINK_CANDIDATE", "file": file_rel, "line": line})
+            g.upsert_node(
+                sig, "SecuritySignal", {"signal": "REACHABLE_DANGEROUS_SINK_CANDIDATE", "file": file_rel, "line": line}
+            )
             g.add_edge(fid, "HAS_SECURITY_SIGNAL", sig, {})
             count += 1
         elif kind == "UPLOAD":

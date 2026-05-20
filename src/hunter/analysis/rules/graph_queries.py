@@ -45,7 +45,5 @@ def has_sql_prepare_between(g: InMemoryGraph, file_rel: str, source_line: int, s
 
 def heuristic_patterns(g: InMemoryGraph, pattern: str) -> list[tuple[str, dict]]:
     return [
-        (nid, n)
-        for nid, n in g.nodes.items()
-        if n.get("label") == "HeuristicPattern" and n.get("pattern") == pattern
+        (nid, n) for nid, n in g.nodes.items() if n.get("label") == "HeuristicPattern" and n.get("pattern") == pattern
     ]

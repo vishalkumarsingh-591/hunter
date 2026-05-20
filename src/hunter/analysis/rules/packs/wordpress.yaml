@@ -1,0 +1,35 @@
+pack_id: hunter-wordpress
+version: "1"
+rules:
+  - id: RULE-WP-NONCE-001
+    description: "Nonce verification gated only on GET"
+    severity_band: MEDIUM
+    python_evaluator_id: wp_nonce_get_only
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A01:2021"]
+    requires_adapter: wordpress
+  - id: RULE-WP-AJAX-001
+    description: "nopriv AJAX without capability check"
+    severity_band: HIGH
+    python_evaluator_id: ajax_nopriv_no_cap
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A01:2021"]
+    requires_adapter: wordpress
+  - id: RULE-WP-REST-001
+    description: "REST route with weak or missing permission callback"
+    severity_band: HIGH
+    python_evaluator_id: wp_rest_weak
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A01:2021"]
+    requires_adapter: wordpress
+  - id: RULE-WP-IDOR-001
+    description: "Heuristic IDOR: user input to sensitive sink without file-level cap check"
+    severity_band: MEDIUM
+    python_evaluator_id: wp_idor_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A01:2021"]
+    requires_adapter: wordpress
+    enabled: true
+    evaluator_params:
+      allowed_sink_kinds: ["SQL", "HTML", "OBJECT_INJECTION"]
+      emit_one_per_sink: true
