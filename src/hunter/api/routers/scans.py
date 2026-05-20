@@ -124,7 +124,6 @@ def api_scan_pdf_report(
         },
     )
 
-
 @router.post("/local", response_model=JobResponse)
 def api_scan_local(body: LocalScanRequest) -> JobResponse:
     p = Path(body.plugin_path)

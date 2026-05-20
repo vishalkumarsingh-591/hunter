@@ -16,6 +16,10 @@ def check_integrity(g: InMemoryGraph) -> tuple[bool, list[str]]:
             if not e.get("layer_src") or not e.get("layer_dst"):
                 issues.append(f"edge[{i}] incomplete layer metadata")
     for nid, n in g.nodes.items():
-        if n.get("label") in {"CFGBlock", "SSAVariable", "PHINode"} and "layer" in n and n["layer"] != "L3_FEATURE_FLOW":
+        if (
+            n.get("label") in {"CFGBlock", "SSAVariable", "PHINode"}
+            and "layer" in n
+            and n["layer"] != "L3_FEATURE_FLOW"
+        ):
             issues.append(f"node {nid} unexpected layer assignment {n['layer']}")
     return len(issues) == 0, issues

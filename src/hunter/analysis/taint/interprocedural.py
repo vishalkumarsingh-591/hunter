@@ -35,14 +35,18 @@ def augment_taint_interprocedural(
     Add cross-file FLOWS_TO approximations with caps.
     Returns count of new FLOWS_TO edges added.
     """
-    sinks = [nid for nid, n in g.nodes.items() if n.get("label") == "Sink"]
-    sources = [nid for nid, n in g.nodes.items() if n.get("label") == "Source"]
+    sinks = sorted(
+        (nid for nid, n in g.nodes.items() if n.get("label") == "Sink"),
+        key=lambda x: (str(g.nodes[x].get("file", "")), int(g.nodes[x].get("line", 0)), x),
+    )
+    sources = sorted(
+        (nid for nid, n in g.nodes.items() if n.get("label") == "Source"),
+        key=lambda x: (str(g.nodes[x].get("file", "")), int(g.nodes[x].get("line", 0)), x),
+    )
     if not sinks or not sources:
         return 0
 
-    existing: set[tuple[str, str]] = {
-        (e["src"], e["dst"]) for e in g.edges if e["rel"] == "FLOWS_TO"
-    }
+    existing: set[tuple[str, str]] = {(e["src"], e["dst"]) for e in g.edges if e["rel"] == "FLOWS_TO"}
 
     unresolved_penalty = 1 if resolution.unresolved_calls > 0 else 0
     phi_count = len(ssa.phi_nodes)

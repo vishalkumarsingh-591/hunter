@@ -18,3 +18,9 @@ sanitizers:
     - SQL_INTEGER
   prepare:
     - SQL_STATEMENT
+  htmlspecialchars:
+    - HTML_BODY
+  filter_var:
+    - GENERIC
+  intval:
+    - SQL_INTEGER

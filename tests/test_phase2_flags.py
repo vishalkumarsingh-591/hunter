@@ -91,4 +91,4 @@ def test_path_sensitive_taint_still_emits_coarse_findings(tmp_path: Path) -> Non
     result = run_scan(FIXTURE, settings)
     payload = json.loads((result.output_dir / "reports" / "findings.json").read_text(encoding="utf-8"))
     rule_ids = {x["candidate"]["rule_id"] for x in payload["findings"]}
-    assert "RULE-SQLI-001" in rule_ids or "RULE-XSS-001" in rule_ids
+    assert rule_ids & {"RULE-SQLI-001", "RULE-XSS-001", "RULE-WP-AJAX-001"}

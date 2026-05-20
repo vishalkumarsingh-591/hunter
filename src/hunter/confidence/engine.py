@@ -26,12 +26,17 @@ def _bucket(score: float, th: dict[str, float]) -> str:
 
 
 class ConfidenceEngine:
-    def __init__(self, weights_path: Path | None = None) -> None:
+    def __init__(self, weights_path: Path | None = None, profile_id: str = "") -> None:
         path = weights_path or Path(__file__).with_name("weights.yaml")
         with open(path, encoding="utf-8") as f:
-            raw = yaml.safe_load(f)
-        self.weights: dict[str, float] = {str(k): float(v) for k, v in raw["weights"].items()}
-        self.thresholds: dict[str, float] = {str(k): float(v) for k, v in raw["thresholds"].items()}
+            raw = yaml.safe_load(f) or {}
+        self.weights: dict[str, float] = {str(k): float(v) for k, v in raw.get("weights", {}).items()}
+        self.thresholds: dict[str, float] = {str(k): float(v) for k, v in raw.get("thresholds", {}).items()}
+        profiles = raw.get("profiles") or {}
+        if profile_id and profile_id in profiles:
+            overrides = profiles[profile_id].get("weights") or {}
+            for k, v in overrides.items():
+                self.weights[str(k)] = float(v)
 
     def build_features(
         self,
@@ -45,9 +50,7 @@ class ConfidenceEngine:
         constraint_strength = float(f.witness.constraint_summary.get("constraint_strength", 0.0) or 0.0)
         has_limits = bool(f.witness.analysis_limits)
         sql_prepare = bool(f.witness.constraint_summary.get("sql_prepare_on_path"))
-        graph_derived = bool(f.witness.semantic_trace) and any(
-            t.startswith("graph:") for t in f.witness.semantic_trace
-        )
+        graph_derived = bool(f.witness.semantic_trace) and any(t.startswith("graph:") for t in f.witness.semantic_trace)
         approximate_flow = bool(f.witness.constraint_summary.get("approximate_flow"))
         lift_derived = "lift_derived_flow" in f.witness.semantic_trace
         return {
@@ -106,5 +109,6 @@ def score_finding(
     skeptic: SkepticVerdict | None,
     graph_integrity_ok: bool,
     weights_path: Path | None = None,
+    profile_id: str = "",
 ) -> ConfidenceRecord:
-    return ConfidenceEngine(weights_path).score(f, verification, skeptic, graph_integrity_ok)
+    return ConfidenceEngine(weights_path, profile_id=profile_id).score(f, verification, skeptic, graph_integrity_ok)

@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Protocol
 
 from hunter.agents.pipeline import enrich_findings
+from hunter.concurrency.pool import resolve_max_inflight, resolve_scan_workers
+from hunter.concurrency.resources import detect_system_resources
 from hunter.analysis.rules.loader import load_rule_pack, rule_pack_hash
+from hunter.graph.security_facts_catalog import catalog_hash
+from hunter.models.core import ScanProfile
 from hunter.analysis.engine.runner import run_analysis
 from hunter.graph.builder import build_graph_from_parse
 from hunter.graph.build_pipeline import build_analysis_graph
@@ -20,6 +24,7 @@ from hunter.models.core import (
     DeterminismMeta,
     QuotaConfig,
     ScanConfig,
+    ScanResources,
     ScanResult,
     ScanStage,
     SnapshotMode,
@@ -27,11 +32,13 @@ from hunter.models.core import (
 from hunter.observability.metrics import Metrics
 from hunter.orchestration.lineage import compute_lineage
 from hunter.orchestration.scan_status import write_scan_status
+from hunter.parse.export import export_ir_artifacts
 from hunter.parse.run import parse_manifest
 from hunter.persistence.database import ScanRow, init_db, session_scope
 from hunter.persistence.repositories import AuditRepository, ScanRepository
 from hunter.reporting.renderer import write_scan_outputs
 from hunter.settings import HunterSettings, hunter_build_version
+
 _LOG = get_logger("hunter.scan")
 
 
@@ -56,6 +63,8 @@ def _replay_token(
     rule_pack_h: str,
     agents_disabled: bool,
     llm_model: str,
+    scan_profile: str,
+    catalog_h: str,
 ) -> str:
     parts = [
         manifest_sha,
@@ -65,8 +74,95 @@ def _replay_token(
         hunter_build_version(),
         str(agents_disabled),
         llm_model,
+        scan_profile,
+        catalog_h,
     ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+def _packs_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "analysis" / "rules" / "packs"
+
+
+def _builtin_profile(profile_id: str) -> ScanProfile:
+    packs = _packs_dir()
+    if profile_id == "generic-php":
+        return ScanProfile(
+            profile_id="generic-php",
+            catalog_ids=["generic-php-v1"],
+            adapter_ids=[],
+            rule_pack_path=packs / "generic-php.yaml",
+        )
+    if profile_id in ("wordpress", "full"):
+        return ScanProfile(
+            profile_id=profile_id,
+            catalog_ids=["generic-php-v1", "wordpress-v1"],
+            adapter_ids=["wordpress"],
+            rule_pack_path=packs / "full.yaml",
+        )
+    return ScanProfile(
+        profile_id="full",
+        catalog_ids=["generic-php-v1", "wordpress-v1"],
+        adapter_ids=["wordpress"],
+        rule_pack_path=packs / "full.yaml",
+    )
+
+
+def _detect_wordpress_signals(repo_root: Path, manifest_files: tuple) -> list[str]:
+    signals: list[str] = []
+    root = repo_root.resolve()
+    path_checks = (
+        ("wp-load.php", root / "wp-load.php"),
+        ("wp-includes/version.php", root / "wp-includes" / "version.php"),
+        ("wp-config-sample.php", root / "wp-config-sample.php"),
+    )
+    for name, p in path_checks:
+        if p.is_file():
+            signals.append(f"path:{name}")
+    content_markers = (
+        "ABSPATH",
+        "register_rest_route",
+        "Plugin Name:",
+        "add_action(",
+        "wp_ajax_nopriv_",
+        "$wpdb",
+    )
+    sampled = 0
+    for mf in manifest_files:
+        if mf.language_guess != "php" or sampled >= 3:
+            continue
+        path = root / mf.rel_path
+        if not path.is_file():
+            continue
+        try:
+            chunk = path.read_text(encoding="utf-8", errors="replace")[:8192]
+        except OSError:
+            continue
+        sampled += 1
+        for marker in content_markers:
+            if marker in chunk:
+                signals.append(f"content:{marker}")
+    return signals
+
+
+def resolve_scan_profile(
+    repo_root: Path,
+    requested: str,
+    manifest_files: tuple,
+    *,
+    rule_pack_override: Path | None = None,
+) -> ScanProfile:
+    req = (requested or "auto").strip().lower()
+    if req == "auto":
+        signals = _detect_wordpress_signals(repo_root, manifest_files)
+        profile_id = "full" if len(signals) >= 2 else "generic-php"
+        _LOG.info("profile_resolved", requested=req, profile_id=profile_id, detect_signals=signals)
+    else:
+        profile_id = req if req in ("generic-php", "wordpress", "full") else "full"
+    profile = _builtin_profile(profile_id)
+    if rule_pack_override is not None:
+        profile = profile.model_copy(update={"rule_pack_path": rule_pack_override})
+    return profile
 
 
 class ScanRunner:
@@ -81,6 +177,7 @@ class ScanRunner:
         set_scan_context(scan_id=scan_id, trace_id=trace_id)
         root = config.plugin_root.resolve()
         slug = _slug(root)
+        dashboard = bool(config.dashboard_meta)
         # Isolate each scan so re-uploading the same plugin slug does not overwrite prior results.
         out = (config.output_root / slug / scan_id).resolve()
         out.mkdir(parents=True, exist_ok=True)
@@ -98,16 +195,17 @@ class ScanRunner:
             )
 
         try:
-            return self._run_pipeline(
+            return self._run_scan_body(
                 config=config,
+                progress=progress,
                 scan_id=scan_id,
                 trace_id=trace_id,
                 root=root,
                 slug=slug,
                 out=out,
-                parse_cache_dir=shared_cache,
-                progress=progress,
+                dashboard=dashboard,
                 status_cb=_status,
+                parse_cache_dir=shared_cache,
             )
         except Exception as exc:  # noqa: BLE001
             write_scan_status(
@@ -126,23 +224,22 @@ class ScanRunner:
                     pass
             raise
 
-    def _run_pipeline(
+    def _run_scan_body(
         self,
         *,
         config: ScanConfig,
+        progress: ProgressReporter | None,
         scan_id: str,
         trace_id: str,
         root: Path,
         slug: str,
         out: Path,
-        parse_cache_dir: Path,
-        progress: ProgressReporter | None,
+        dashboard: bool,
         status_cb,
+        parse_cache_dir: Path,
     ) -> ScanResult:
         self.metrics.inc("scans_started")
         _LOG.info("scan_started", scan_id=scan_id, plugin=str(root))
-        # Record the in-progress output_dir to the status file BEFORE entering the DB
-        # block so the API can locate live progress even on the first poll.
         status_cb("ingest", "Reading plugin files…", 5)
         if self.settings.database_url:
             try:
@@ -163,13 +260,39 @@ class ScanRunner:
             except Exception as exc:  # noqa: BLE001
                 _LOG.warning("persistence_skipped", error=str(exc))
 
-        quotas = config.quotas
-        ingest = run_ingest(root, quotas)
-        status_cb("snapshot", "Saving repository snapshot…", 10)
-        snap_mode = (
-            SnapshotMode.copy if self.settings.snapshot_mode != "manifest-only" else SnapshotMode.manifest_only
+        resources = detect_system_resources()
+        workers = resolve_scan_workers(config.scan_workers, resources=resources)
+        max_inflight = resolve_max_inflight(
+            config.scan_max_inflight, workers, ram_gb=resources.ram_gb
         )
-        write_repository_snapshot(out, ingest.manifest, ingest, snap_mode)
+        scan_resources = ScanResources(
+            cpu_count=resources.cpu_count,
+            ram_gb=resources.ram_gb,
+            workers=workers,
+            max_inflight=max_inflight,
+        )
+        _LOG.info(
+            "scan_resources",
+            cpu_count=scan_resources.cpu_count,
+            ram_gb=scan_resources.ram_gb,
+            workers=scan_resources.workers,
+            max_inflight=scan_resources.max_inflight,
+        )
+        quotas = config.quotas
+        ingest = run_ingest(root, quotas, workers=workers)
+        status_cb("snapshot", "Saving repository snapshot…", 10)
+        profile = config.resolved_profile or resolve_scan_profile(
+            root,
+            config.profile,
+            ingest.manifest.files,
+            rule_pack_override=config.rule_pack_path,
+        )
+        config = config.model_copy(update={"resolved_profile": profile})
+        cat_h = catalog_hash(profile.catalog_ids)
+        snap_mode = SnapshotMode.copy if self.settings.snapshot_mode != "manifest-only" else SnapshotMode.manifest_only
+        write_repository_snapshot(out, ingest.manifest, ingest, snap_mode, workers=workers)
+        if not dashboard:
+            parse_cache_dir.mkdir(parents=True, exist_ok=True)
         parseable_files = sum(
             1
             for mf in ingest.manifest.files
@@ -180,13 +303,16 @@ class ScanRunner:
                 "Scan did not find any parseable PHP/JS/HTML files in the source. "
                 "Check that the upload contains a real WordPress plugin/theme."
             )
-        rule_pack_path = config.rule_pack_path or Path(__file__).resolve().parents[1] / "analysis" / "rules" / "packs" / "default.yaml"
+        rule_pack_path = profile.rule_pack_path
         rule_pack = load_rule_pack(rule_pack_path)
+        active_adapters = frozenset(profile.adapter_ids)
         if progress:
             fixed_steps = 11  # includes apply_layers (always on)
             optional_steps = 0
             optional_steps += int(config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled)
-            optional_steps += int(config.cfg_ssa_enabled and (config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled))
+            optional_steps += int(
+                config.cfg_ssa_enabled and (config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled)
+            )
             optional_steps += int(config.security_popchain_enabled)
             optional_steps += int(config.semantic_diff_enabled or config.incremental_recompute_enabled)
             progress.reset(parseable_files + len(rule_pack.rules) + fixed_steps + optional_steps, f"scan {slug}")
@@ -198,7 +324,6 @@ class ScanRunner:
             if progress:
                 progress.advance(step, description)
             if description and parseable_files:
-                # rough parse progress 20–55%
                 done = min(parseable_files, getattr(_parse_progress, "_n", 0) + step)  # type: ignore[attr-defined]
                 _parse_progress._n = done  # type: ignore[attr-defined]
                 pct = 20 + (35 * done / max(parseable_files, 1))
@@ -213,11 +338,16 @@ class ScanRunner:
             structure_complete_mode=self.settings.parse_structure_complete_mode,
             max_ir_nodes_per_file=self.settings.parse_max_ir_nodes_per_file,
             lift_version=self.settings.lift_version,
+            workers=workers,
+            max_inflight=max_inflight,
         )
         if progress and parseable_files == 0:
             progress.advance(1, "parse complete")
         status_cb("graph", "Building security graph…", 55)
-        gbuild = build_graph_from_parse(ingest.manifest, parse, self.settings.graph_schema_version)
+        schema_ver = config.graph_schema_version or self.settings.graph_schema_version
+        gbuild = build_graph_from_parse(
+            ingest.manifest, parse, schema_ver, run_structural_import=(workers <= 1)
+        )
         g = gbuild.graph
         if progress:
             progress.advance(1, "graph built")
@@ -226,7 +356,8 @@ class ScanRunner:
             ingest.manifest,
             parse,
             self.settings,
-            wp_semantics_v2=config.wp_semantics_v2_enabled,
+            profile=profile,
+            workers=workers,
             resolver_enabled=config.semantic_ir_v2_enabled or config.resolver_interprocedural_enabled,
             cfg_ssa_enabled=config.cfg_ssa_enabled,
             taint_path_sensitive=config.taint_path_sensitive_enabled,
@@ -236,6 +367,11 @@ class ScanRunner:
         )
         if gbuild.structural_stats:
             st = gbuild.structural_stats
+        elif pipe.structural_stats:
+            st = pipe.structural_stats
+        else:
+            st = None
+        if st:
             _LOG.info(
                 "phase1_structural",
                 functions=st.functions,
@@ -260,10 +396,22 @@ class ScanRunner:
         findings, pack, _tel = run_analysis(
             g,
             ingest.manifest,
-            config.rule_pack_path,
+            rule_pack_path,
             pack=rule_pack,
+            active_adapters=active_adapters,
+            workers=workers,
             progress=(lambda step, description=None: progress.advance(step, description) if progress else None),
         )
+        if profile.adapter_ids and profile.adapter_ids[0] == "wordpress":
+            from hunter.models.findings import ExposureContext
+
+            updated: list = []
+            for f in findings:
+                exp = f.exposure_context
+                if not exp.framework:
+                    exp = exp.model_copy(update={"framework": "wordpress"})
+                updated.append(f.model_copy(update={"exposure_context": exp}))
+            findings = updated
         rph = rule_pack_hash(pack)
         integrity_ok, issues = check_integrity(g)
         if progress:
@@ -271,7 +419,7 @@ class ScanRunner:
         sg = out / "semantic_graph"
         g.export_jsonl(sg)
         ir_dir = sg / "ir_exports"
-        ir_dir.mkdir(parents=True, exist_ok=True)
+        export_ir_artifacts(parse, ir_dir, workers=workers)
         # Log node type distribution for debugging (nodes use singular "label")
         node_types: dict[str, int] = {}
         for _nid, n in g.nodes.items():
@@ -280,9 +428,6 @@ class ScanRunner:
                 ls = str(lab)
                 node_types[ls] = node_types.get(ls, 0) + 1
         _LOG.info("phase2_graph_export", total_nodes=len(g.nodes), node_types=node_types, total_edges=len(g.edges))
-        for rel, art in parse.per_file.items():
-            safe = rel.replace("\\", "_").replace("/", "__")
-            (ir_dir / f"{safe}.json").write_text(art.model_dump_json(), encoding="utf-8")
         if config.semantic_diff_enabled or config.incremental_recompute_enabled:
             lineage = compute_lineage(out, ingest.manifest)
             self.metrics.inc("semantic_diff_added_files", len(lineage.semantic_diff.added_files))
@@ -312,6 +457,7 @@ class ScanRunner:
             graph_integrity_ok=integrity_ok,
             agents_enabled=config.agents_enabled,
             confidence_weights=self.settings.confidence_weights_path,
+            profile_id=profile.profile_id,
         )
         status_cb("reporting", "Writing report…", 90)
         if progress:
@@ -320,18 +466,22 @@ class ScanRunner:
             replay_token=_replay_token(
                 ingest.manifest.manifest_sha256,
                 parse.parser_lock_hash,
-                self.settings.graph_schema_version,
+                schema_ver,
                 rph,
                 agents_disabled=not config.agents_enabled,
                 llm_model=self.settings.llm_model if config.agents_enabled else "",
+                scan_profile=profile.profile_id,
+                catalog_h=cat_h,
             ),
             manifest_sha256=ingest.manifest.manifest_sha256,
             parser_lock_hash=parse.parser_lock_hash,
-            graph_schema_version=self.settings.graph_schema_version,
+            graph_schema_version=schema_ver,
             rule_pack_hash=rph,
             hunter_version=hunter_build_version(),
             agents_disabled=not config.agents_enabled,
             llm_model_id=self.settings.llm_model if config.agents_enabled else "",
+            scan_profile=profile.profile_id,
+            catalog_hash=cat_h,
         )
         write_scan_outputs(
             out,
@@ -345,6 +495,9 @@ class ScanRunner:
             reasoning_trace=trace,
             graph_integrity_ok=integrity_ok,
             settings=self.settings,
+            rule_pack=pack,
+            scan_profile=profile.profile_id,
+            scan_resources=scan_resources,
         )
         if progress:
             progress.advance(1, "reporting")
@@ -429,7 +582,9 @@ def run_scan(
     s = settings or HunterSettings.load()
     cfg = ScanConfig(
         plugin_root=plugin_path,
+        profile=s.scan_profile,
         output_root=s.output_root,
+        graph_schema_version=s.graph_schema_version,
         quotas=QuotaConfig(
             max_files=s.ingest_max_files,
             max_total_bytes=s.ingest_max_total_bytes,
@@ -443,7 +598,6 @@ def run_scan(
         neo4j_password=s.neo4j_password,
         database_url=s.database_url,
         rule_pack_path=s.rule_pack_path,
-        graph_schema_version=s.graph_schema_version,
         rule_timeout_seconds=s.rule_timeout_seconds,
         semantic_ir_v2_enabled=s.semantic_ir_v2_enabled,
         resolver_interprocedural_enabled=s.resolver_interprocedural_enabled,
@@ -454,5 +608,7 @@ def run_scan(
         semantic_diff_enabled=s.semantic_diff_enabled,
         incremental_recompute_enabled=s.incremental_recompute_enabled,
         neo4j_layered_write_enabled=s.neo4j_layered_write_enabled,
+        scan_workers=s.scan_workers,
+        scan_max_inflight=s.scan_max_inflight,
     )
     return ScanRunner(s).run(cfg, progress=progress)

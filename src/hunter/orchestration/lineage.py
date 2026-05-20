@@ -26,7 +26,9 @@ def compute_lineage(out_dir: Path, manifest: RepoManifest) -> LineageResult:
     diff = compute_semantic_diff(base_manifest, manifest)
     lineage_dir = out_dir / "cache" / "lineage"
     lineage_dir.mkdir(parents=True, exist_ok=True)
-    (lineage_dir / "semantic_diff.json").write_text(json.dumps(diff.__dict__, indent=2, sort_keys=True), encoding="utf-8")
+    (lineage_dir / "semantic_diff.json").write_text(
+        json.dumps(diff.__dict__, indent=2, sort_keys=True), encoding="utf-8"
+    )
     (lineage_dir / "previous_manifest.json").write_text(manifest.model_dump_json(), encoding="utf-8")
     base_snapshot_id = None
     sid = out_dir / "semantic_graph" / "snapshot_id.txt"

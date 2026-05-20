@@ -1,0 +1,88 @@
+catalog_id: generic-php-v1
+version: "1"
+languages: [php]
+patterns:
+  - label: Source
+    pattern: "\\$_(GET|POST|REQUEST)\\b"
+    props: {kind: HTTP_SUPERGLOBAL, context: HTTP_INPUT}
+  - label: Source
+    pattern: "\\$_(COOKIE|SERVER)\\b"
+    props: {kind: HTTP_SUPERGLOBAL, context: HTTP_INPUT}
+  - label: Source
+    pattern: "\\bphp://input\\b"
+    props: {kind: HTTP_BODY, context: HTTP_INPUT, name: "php://input"}
+  - label: Source
+    pattern: "\\$_(FILES)\\b"
+    props: {kind: HTTP_UPLOAD, context: HTTP_INPUT}
+  - label: Source
+    pattern: "\\bgetenv\\s*\\("
+    props: {kind: ENV, context: HTTP_INPUT}
+  - label: Source
+    pattern: "\\$argv\\b"
+    props: {kind: CLI_ARG, context: CLI}
+  - label: Sink
+    pattern: "\\b(PDO|mysqli)\\s*::\\s*query\\s*\\("
+    props: {kind: SQL, context: SQL, api: pdo_static_query}
+  - label: Sink
+    pattern: "\\$[a-zA-Z_][a-zA-Z0-9_]*\\s*->\\s*query\\s*\\("
+    props: {kind: SQL, context: SQL, api: pdo_query}
+  - label: Sink
+    pattern: "\\$wpdb\\s*->\\s*query\\s*\\("
+    props: {kind: SQL, context: SQL, api: wpdb_query}
+  - label: Sink
+    pattern: "\\$wpdb\\s*->\\s*(get_results|get_var|get_row)\\s*\\("
+    props: {kind: SQL, context: SQL}
+  - label: Sink
+    pattern: "\\bmysqli_query\\s*\\("
+    props: {kind: SQL, context: SQL, api: mysqli_query}
+  - label: Sink
+    pattern: "\\becho\\s+"
+    props: {kind: HTML, context: HTML, api: echo}
+  - label: Sink
+    pattern: "\\b(print|printf)\\s*\\("
+    props: {kind: HTML, context: HTML}
+  - label: Sink
+    pattern: "\\b(header|wp_safe_redirect)\\s*\\("
+    props: {kind: REDIRECT, context: URL}
+  - label: Sink
+    pattern: "(?<![A-Za-z0-9_])(include|require)(_once)?(\\s*\\(|\\s+)"
+    props: {kind: FILE_INCLUDE, context: FILE}
+  - label: Sink
+    pattern: "\\b(file_get_contents|readfile|fopen)\\s*\\("
+    props: {kind: REMOTE_READ, context: FILE}
+  - label: Sink
+    pattern: "\\b(file_put_contents|unlink)\\s*\\("
+    props: {kind: FILE_WRITE, context: FILE}
+  - label: Sink
+    pattern: "\\b(eval|assert|shell_exec|system|passthru|exec|proc_open)\\s*\\("
+    props: {kind: CODE_EXEC, context: SHELL}
+  - label: Sink
+    pattern: "\\b(move_uploaded_file|wp_handle_upload)\\s*\\("
+    props: {kind: UPLOAD, context: FILE}
+  - label: Sink
+    pattern: "\\b(curl_exec|curl_setopt)\\s*\\("
+    props: {kind: HTTP_CLIENT, context: SSRF}
+  - label: Sink
+    pattern: "\\bwp_remote_(get|post|request)\\s*\\("
+    props: {kind: HTTP_CLIENT, context: SSRF}
+  - label: Sink
+    pattern: "\\bfputcsv\\s*\\("
+    props: {kind: CSV_OUTPUT, context: CSV}
+  - label: Sink
+    pattern: "\\bunserialize\\s*\\("
+    props: {kind: OBJECT_INJECTION, context: DESERIALIZE}
+  - label: Sanitizer
+    pattern: "\\$wpdb\\s*->\\s*prepare\\s*\\("
+    props: {kind: SQL_PREPARE, name: wpdb_prepare, context: SQL}
+  - label: Sanitizer
+    pattern: "\\b(PDO|mysqli).*->\\s*prepare\\s*\\("
+    props: {kind: SQL_PREPARE, context: SQL}
+  - label: Sanitizer
+    pattern: "\\b(htmlspecialchars|filter_var|intval|mysqli_real_escape_string)\\s*\\("
+    props: {kind: SANITIZE, context: HTML}
+heuristic_patterns:
+  - name: NONCE_GET_ONLY
+    requirements:
+      - "\\$_REQUEST\\s*\\[\\s*['\"]option['\"]\\s*\\]"
+      - "['\"]GET['\"]\\s*===\\s*\\$_SERVER"
+      - wp_verify_nonce

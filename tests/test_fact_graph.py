@@ -11,10 +11,12 @@ from hunter.graph.in_memory import InMemoryGraph
 
 
 def test_rule_pack_schema_versions() -> None:
-    pack = load_rule_pack(Path(__file__).resolve().parents[1] / "src" / "hunter" / "analysis" / "rules" / "packs" / "default.yaml")
+    pack = load_rule_pack(
+        Path(__file__).resolve().parents[1] / "src" / "hunter" / "analysis" / "rules" / "packs" / "default.yaml"
+    )
     assert pack.version == "3"
     for rule in pack.rules:
-        assert rule.min_graph_schema_version in ("3", "4", "5")
+        assert rule.min_graph_schema_version in ("3", "3.1", "4", "5")
 
 
 def test_schema_meets_minimum() -> None:
@@ -83,14 +85,14 @@ def test_sqli_graph_evaluator_on_minimal_fixture() -> None:
             parse_cache_dir=Path(tmp),
             max_single_file_bytes=settings.ingest_max_single_file_bytes,
         )
-    gbuild = build_graph_from_parse(ingest.manifest, parse, "3")
+    gbuild = build_graph_from_parse(ingest.manifest, parse, "3.1")
     g = gbuild.graph
     build_analysis_graph(
         g,
         ingest.manifest,
         parse,
         settings,
-        wp_semantics_v2=False,
+        profile=None,
         resolver_enabled=False,
         cfg_ssa_enabled=False,
         taint_path_sensitive=False,

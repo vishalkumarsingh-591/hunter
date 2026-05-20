@@ -1,3 +1,3 @@
-from hunter.wp.augment import augment_wordpress_semantics
+from hunter.graph.wp_import import import_wordpress_semantics, run_platform_adapters
 
-__all__ = ["augment_wordpress_semantics"]
+__all__ = ["import_wordpress_semantics", "run_platform_adapters"]

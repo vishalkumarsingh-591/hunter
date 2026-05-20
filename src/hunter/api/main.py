@@ -65,6 +65,7 @@ import uuid  # noqa: E402
 
 class ScanRequest(BaseModel):
     plugin_path: str
+    profile: str = "auto"
 
 
 class ScanResponse(BaseModel):
@@ -87,6 +88,7 @@ def create_scan_sync(body: ScanRequest) -> ScanResponse:
     set_scan_context(scan_id=scan_id, trace_id=scan_id)
     cfg = ScanConfig(
         plugin_root=p,
+        profile=body.profile,
         output_root=settings.output_root,
         scan_id=scan_id,
         trace_id=scan_id,
@@ -101,6 +103,17 @@ def create_scan_sync(body: ScanRequest) -> ScanResponse:
         database_url=settings.database_url,
         rule_pack_path=settings.rule_pack_path,
         graph_schema_version=settings.graph_schema_version,
+        rule_timeout_seconds=settings.rule_timeout_seconds,
+        semantic_ir_v2_enabled=settings.semantic_ir_v2_enabled,
+        resolver_interprocedural_enabled=settings.resolver_interprocedural_enabled,
+        cfg_ssa_enabled=settings.cfg_ssa_enabled,
+        taint_path_sensitive_enabled=settings.taint_path_sensitive_enabled,
+        security_popchain_enabled=settings.security_popchain_enabled,
+        semantic_diff_enabled=settings.semantic_diff_enabled,
+        incremental_recompute_enabled=settings.incremental_recompute_enabled,
+        neo4j_layered_write_enabled=settings.neo4j_layered_write_enabled,
+        scan_workers=settings.scan_workers,
+        scan_max_inflight=settings.scan_max_inflight,
     )
     result = ScanRunner(settings).run(cfg)
     return ScanResponse(

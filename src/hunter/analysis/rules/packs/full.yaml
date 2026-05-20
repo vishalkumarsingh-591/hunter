@@ -1,0 +1,6 @@
+pack_id: hunter-full
+version: "1"
+includes:
+  - generic-php.yaml
+  - wordpress.yaml
+rules: []

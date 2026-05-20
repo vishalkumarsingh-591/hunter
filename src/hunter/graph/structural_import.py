@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from hunter.graph.in_memory import InMemoryGraph
 from hunter.models.ir import ParseRunResult
@@ -79,7 +80,13 @@ def import_structural(
                 g.upsert_node(
                     cid,
                     "Class",
-                    {"name": ir.label[:120], "kind": ir.kind, "line": ir.start_line, "file": rel_path, "ir_node_id": ir.id},
+                    {
+                        "name": ir.label[:120],
+                        "kind": ir.kind,
+                        "line": ir.start_line,
+                        "file": rel_path,
+                        "ir_node_id": ir.id,
+                    },
                 )
                 g.add_edge(fid, "DEFINED_IN", cid, {})
                 g.add_edge(cid, "ANCHORED_AT", gid, {})
@@ -91,7 +98,13 @@ def import_structural(
                 g.upsert_node(
                     nid,
                     label,
-                    {"name": ir.label[:120], "kind": ir.kind, "line": ir.start_line, "file": rel_path, "ir_node_id": ir.id},
+                    {
+                        "name": ir.label[:120],
+                        "kind": ir.kind,
+                        "line": ir.start_line,
+                        "file": rel_path,
+                        "ir_node_id": ir.id,
+                    },
                 )
                 g.add_edge(fid, "DEFINED_IN", nid, {})
                 g.add_edge(nid, "ANCHORED_AT", gid, {})
@@ -148,3 +161,134 @@ def import_structural(
                         g.add_edge(call, "CALLS_UNKNOWN", unk, {})
 
     return stats
+
+
+def _shard_add_node(
+    nodes: dict[str, dict[str, Any]],
+    nid: str,
+    label: str,
+    props: dict[str, Any],
+) -> None:
+    nodes[nid] = {"id": nid, "label": label, **props}
+
+
+def import_structural_file(
+    sid: str,
+    rel_path: str,
+    art: FileParseArtifact,
+    *,
+    vendor_skip_globs: tuple[str, ...] | None = None,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[tuple[str, str, str, dict[str, Any] | None]], StructuralImportStats]:
+    """Build structural nodes/edges for one file (parallel shard)."""
+    stats = StructuralImportStats()
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[tuple[str, str, str, dict[str, Any] | None]] = []
+    fid = f"file:{sid}:{rel_path}"
+    skip_callsites = skip_vendor_structural(rel_path, vendor_skip_globs)
+    truncated = art.status == "PARTIAL" or any(d.code == "IR_BUDGET_EXCEEDED" for d in art.diagnostics)
+    file_props = {
+        "parse_status": art.status,
+        "ir_node_count": len(art.ir_nodes),
+        "lift_truncated": truncated,
+    }
+    if truncated:
+        stats.truncated_files += 1
+
+    ir_to_graph = {ir.id: _graph_ir_id(sid, ir.id) for ir in art.ir_nodes}
+    ir_id_to_entity: dict[str, str] = {}
+
+    def add_edge(src: str, rel: str, dst: str, props: dict[str, Any] | None = None) -> None:
+        edges.append((src, rel, dst, props))
+
+    for ir in art.ir_nodes:
+        gid = ir_to_graph[ir.id]
+        if ir.kind in _CLASS_IR_KINDS:
+            cid = f"class:{sid}:{rel_path}:{ir.start_line}:{ir.kind}"
+            _shard_add_node(
+                nodes,
+                cid,
+                "Class",
+                {
+                    "name": ir.label[:120],
+                    "kind": ir.kind,
+                    "line": ir.start_line,
+                    "file": rel_path,
+                    "ir_node_id": ir.id,
+                },
+            )
+            add_edge(fid, "DEFINED_IN", cid)
+            add_edge(cid, "ANCHORED_AT", gid)
+            ir_id_to_entity[ir.id] = cid
+            stats.classes += 1
+        elif ir.kind in _FN_IR_KINDS:
+            label = "Method" if ir.kind == "method_declaration" else "Function"
+            nid = f"func:{sid}:{rel_path}:{ir.start_line}:{ir.kind}"
+            _shard_add_node(
+                nodes,
+                nid,
+                label,
+                {
+                    "name": ir.label[:120],
+                    "kind": ir.kind,
+                    "line": ir.start_line,
+                    "file": rel_path,
+                    "ir_node_id": ir.id,
+                },
+            )
+            add_edge(fid, "DEFINED_IN", nid)
+            add_edge(nid, "ANCHORED_AT", gid)
+            ir_id_to_entity[ir.id] = nid
+            if label == "Method":
+                stats.methods += 1
+            else:
+                stats.functions += 1
+        elif ir.kind in _CALL_IR_KINDS and not skip_callsites:
+            cid = f"callsite:{sid}:{rel_path}:{ir.start_line}:{ir.start_byte}"
+            _shard_add_node(
+                nodes,
+                cid,
+                "Callsite",
+                {
+                    "label_preview": ir.label[:120],
+                    "line": ir.start_line,
+                    "file": rel_path,
+                    "ir_node_id": ir.id,
+                },
+            )
+            add_edge(fid, "HAS_CALLSITE", cid)
+            add_edge(cid, "ANCHORED_AT", gid)
+            ir_id_to_entity[ir.id] = cid
+            stats.callsites += 1
+
+    for edge in art.ir_edges:
+        if edge.kind == "CONTAINS":
+            src_ent = ir_id_to_entity.get(edge.src_id)
+            dst_ent = ir_id_to_entity.get(edge.dst_id)
+            if src_ent and dst_ent:
+                add_edge(src_ent, "CONTAINS", dst_ent)
+        elif edge.kind == "CALLS":
+            parent = ir_id_to_entity.get(edge.src_id)
+            call = ir_id_to_entity.get(edge.dst_id)
+            if parent and call:
+                add_edge(parent, "CALLS", call)
+                callee = _static_callee_name(str(nodes[call].get("label_preview", "")))
+                if callee:
+                    sym = f"sym:{sid}:{callee}"
+                    _shard_add_node(nodes, sym, "Symbol", {"name": callee, "file": rel_path})
+                    add_edge(call, "CALLS_TARGET", sym, {"name": callee})
+                else:
+                    unk = f"unknown:{call}"
+                    call_node = nodes.get(call, {})
+                    _shard_add_node(
+                        nodes,
+                        unk,
+                        "UnknownTarget",
+                        {
+                            "callsite_id": call,
+                            "file": rel_path,
+                            "line": int(call_node.get("line", 0)),
+                        },
+                    )
+                    add_edge(call, "CALLS_UNKNOWN", unk)
+
+    return file_props, nodes, edges, stats

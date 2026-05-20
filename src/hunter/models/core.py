@@ -72,6 +72,13 @@ class IngestResult(BaseModel):
     tree_sha256: str = ""
 
 
+class ScanResources(BaseModel):
+    cpu_count: int
+    ram_gb: int
+    workers: int
+    max_inflight: int
+
+
 class DeterminismMeta(BaseModel):
     replay_token: str
     manifest_sha256: str
@@ -81,10 +88,22 @@ class DeterminismMeta(BaseModel):
     hunter_version: str
     agents_disabled: bool
     llm_model_id: str = ""
+    scan_profile: str = ""
+    catalog_hash: str = ""
+
+
+class ScanProfile(BaseModel):
+    """Resolved scan profile: catalogs, adapters, and rule pack."""
+
+    profile_id: str
+    catalog_ids: list[str] = Field(default_factory=list)
+    adapter_ids: list[str] = Field(default_factory=list)
+    rule_pack_path: Path
 
 
 class ScanConfig(BaseModel):
     plugin_root: Path
+    profile: str = "auto"
     output_root: Path = Field(default=Path("output"))
     snapshot_mode: SnapshotMode = SnapshotMode.copy
     quotas: QuotaConfig = Field(default_factory=QuotaConfig)
@@ -102,11 +121,14 @@ class ScanConfig(BaseModel):
     resolver_interprocedural_enabled: bool = False
     cfg_ssa_enabled: bool = False
     taint_path_sensitive_enabled: bool = False
-    wp_semantics_v2_enabled: bool = False
+    wp_semantics_v2_enabled: bool = False  # deprecated: use profile adapters
+    resolved_profile: ScanProfile | None = None
     security_popchain_enabled: bool = False
     semantic_diff_enabled: bool = False
     incremental_recompute_enabled: bool = False
     neo4j_layered_write_enabled: bool = False
+    scan_workers: int = 0
+    scan_max_inflight: int = 0
     dashboard_meta: dict[str, str] = Field(default_factory=dict)
     persist_findings_to_db: bool = True
 

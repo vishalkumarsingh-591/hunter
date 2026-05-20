@@ -1,0 +1,95 @@
+pack_id: hunter-generic-php
+version: "1"
+rules:
+  - id: RULE-SQLI-001
+    description: "Graph flow from HTTP source to SQL sink without prepare mitigation on path"
+    severity_band: MEDIUM
+    python_evaluator_id: sqli_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-89"]
+    evaluator_params:
+      emit_one_per_sink: true
+  - id: RULE-XSS-001
+    description: "Graph flow from HTTP source to HTML echo sink"
+    severity_band: LOW
+    python_evaluator_id: xss_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-79"]
+    evaluator_params:
+      emit_one_per_sink: true
+  - id: RULE-REDIRECT-001
+    description: "Graph flow to open redirect sink"
+    severity_band: MEDIUM
+    python_evaluator_id: redirect_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A01:2021"]
+    cwe_ids: ["CWE-601"]
+    evaluator_params:
+      emit_one_per_sink: true
+  - id: RULE-LFI-001
+    description: "Graph flow to local file include sink"
+    severity_band: MEDIUM
+    python_evaluator_id: lfi_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-98"]
+    evaluator_params:
+      require_non_static_sink: true
+      emit_one_per_sink: true
+  - id: RULE-RFI-001
+    description: "Graph flow to remote file read sink"
+    severity_band: HIGH
+    python_evaluator_id: rfi_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-98"]
+    evaluator_params:
+      require_non_static_sink: true
+      emit_one_per_sink: true
+  - id: RULE-RCE-001
+    description: "Graph flow to code execution sink"
+    severity_band: CRITICAL
+    python_evaluator_id: rce_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-94"]
+    evaluator_params:
+      require_primary_sources: true
+      emit_one_per_sink: true
+  - id: RULE-UPLOAD-001
+    description: "Graph flow to file upload sink"
+    severity_band: HIGH
+    python_evaluator_id: upload_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    cwe_ids: ["CWE-434"]
+    evaluator_params:
+      require_non_static_sink: true
+      emit_one_per_sink: true
+  - id: RULE-SSRF-001
+    description: "Graph flow to HTTP client sink"
+    severity_band: LOW
+    python_evaluator_id: ssrf_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A10:2021"]
+    cwe_ids: ["CWE-918"]
+    evaluator_params:
+      emit_one_per_sink: true
+  - id: RULE-CSV-001
+    description: "Graph flow to CSV output sink"
+    severity_band: LOW
+    python_evaluator_id: csv_graph
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A03:2021"]
+    evaluator_params:
+      emit_one_per_sink: true
+  - id: RULE-OBJINJ-001
+    description: "Object injection entrypoint signal"
+    severity_band: MEDIUM
+    python_evaluator_id: object_injection_signal
+    min_graph_schema_version: "3.1"
+    owasp_ids: ["A08:2021"]
+    cwe_ids: ["CWE-502"]
+    evaluator_params: {}

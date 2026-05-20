@@ -14,6 +14,7 @@ from hunter.graph.in_memory import InMemoryGraph
 from hunter.models.core import RepoManifest
 from hunter.models.findings import (
     CandidateFinding,
+    ExposureContext,
     LocationAnchor,
     Witness,
     WitnessHop,
@@ -109,7 +110,7 @@ def _witness_for_flow(
     sink_kind = str(sk.get("kind", ""))
     constraint_summary: dict[str, int | float | bool | str] = {}
     semantic_trace: list[str] = [f"graph:source:{src}", f"graph:sink:{dst}"]
-    limits: list[str] = []
+    limits: list[str] = ["exposure_not_gated"]
     if extra_sources:
         for xs in extra_sources[:5]:
             semantic_trace.append(f"graph:alt_source:{xs}")
@@ -254,16 +255,15 @@ def eval_sqli_graph(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateF
                 rule_id="RULE-SQLI-001",
                 severity_band_static="MEDIUM",
                 title_template_key="sqli.graph_flow",
-                anchors=[_anchor_for_node(e["src"], sn, file_rel=file_rel), _anchor_for_node(e["dst"], sk, file_rel=file_rel)],
+                anchors=[
+                    _anchor_for_node(e["src"], sn, file_rel=file_rel),
+                    _anchor_for_node(e["dst"], sk, file_rel=file_rel),
+                ],
                 witness=w,
                 wp_context=WPContextFeatures(),
             )
         )
     return out
-
-
-def eval_sqli_file_coarse(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateFinding]:
-    return eval_sqli_graph(g, manifest)
 
 
 def eval_xss_graph(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateFinding]:
@@ -278,17 +278,9 @@ def eval_xss_graph(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateFi
     )
 
 
-def eval_xss_echo_coarse(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateFinding]:
-    return eval_xss_graph(g, manifest)
-
-
 def eval_ajax_nopriv_no_cap(g: InMemoryGraph, manifest: RepoManifest) -> list[CandidateFinding]:
     out: list[CandidateFinding] = []
-    files_with_cap = {
-        n.get("file")
-        for n in g.nodes.values()
-        if n.get("label") == "CapabilityCheck" and n.get("file")
-    }
+    files_with_cap = {n.get("file") for n in g.nodes.values() if n.get("label") == "CapabilityCheck" and n.get("file")}
     handler_guarded: set[str] = set()
     for e in g.edges:
         if e["rel"] != "HANDLED_BY":
@@ -331,6 +323,7 @@ def eval_ajax_nopriv_no_cap(g: InMemoryGraph, manifest: RepoManifest) -> list[Ca
                 anchors=[anchor],
                 witness=w,
                 wp_context=WPContextFeatures(ajax_nopriv=True, exposure="AJAX_NOPRIV"),
+                exposure_context=ExposureContext(surface="HTTP_PUBLIC", framework="wordpress"),
             )
         )
     return out
@@ -538,7 +531,16 @@ def eval_wp_rest_weak(g: InMemoryGraph, manifest: RepoManifest) -> list[Candidat
         nid = e["src"]
         file_rel = str(route.get("file", ""))
         line = 1
-        anchor = LocationAnchor(file_rel_path=file_rel, start_line=line, end_line=line, start_col=0, end_col=0, start_byte=0, end_byte=0, ir_node_id=nid)
+        anchor = LocationAnchor(
+            file_rel_path=file_rel,
+            start_line=line,
+            end_line=line,
+            start_col=0,
+            end_col=0,
+            start_byte=0,
+            end_byte=0,
+            ir_node_id=nid,
+        )
         w = Witness(path_edges=[nid], semantic_trace=[f"graph:route:{nid}"], taint_labels=["REST", "ACCESS_CONTROL"])
         wid = _witness_hash(w)
         out.append(
@@ -601,7 +603,10 @@ def eval_wp_idor_graph(g: InMemoryGraph, manifest: RepoManifest) -> list[Candida
                 rule_id="RULE-WP-IDOR-001",
                 severity_band_static="MEDIUM",
                 title_template_key="wp.idor.graph_heuristic",
-                anchors=[_anchor_for_node(rep_src, sn, file_rel=file_rel), _anchor_for_node(rep_dst, sk, file_rel=file_rel)],
+                anchors=[
+                    _anchor_for_node(rep_src, sn, file_rel=file_rel),
+                    _anchor_for_node(rep_dst, sk, file_rel=file_rel),
+                ],
                 witness=w,
                 wp_context=WPContextFeatures(exposure="UNKNOWN"),
             )
@@ -610,9 +615,7 @@ def eval_wp_idor_graph(g: InMemoryGraph, manifest: RepoManifest) -> list[Candida
 
 
 EVALUATORS = {
-    "sqli_file_coarse": eval_sqli_file_coarse,
     "sqli_graph": eval_sqli_graph,
-    "xss_echo_coarse": eval_xss_echo_coarse,
     "xss_graph": eval_xss_graph,
     "wp_nonce_get_only": eval_wp_nonce_get_only,
     "ajax_nopriv_no_cap": eval_ajax_nopriv_no_cap,

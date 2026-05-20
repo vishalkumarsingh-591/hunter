@@ -44,7 +44,10 @@ class HunterSettings(BaseSettings):
     lift_version: str = "2"
     parse_structure_complete_mode: bool = True
     parse_max_ir_nodes_per_file: int = 250_000
-    graph_schema_version: str = "3"
+    graph_schema_version: str = "3.1"
+    scan_profile: str = "auto"
+    scan_workers: int = 0
+    scan_max_inflight: int = 0
     graph_batch_size: int = 500
     neo4j_uri: str = ""
     neo4j_user: str = "neo4j"
@@ -122,9 +125,14 @@ class HunterSettings(BaseSettings):
             flat["lift_version"] = str(p.get("lift_version", "2"))
             flat["parse_structure_complete_mode"] = bool(p.get("structure_complete_mode", True))
             flat["parse_max_ir_nodes_per_file"] = int(p.get("max_ir_nodes_per_file", 250_000))
+        if "scan" in defaults:
+            sc = defaults["scan"]
+            flat["scan_profile"] = str(sc.get("profile", "auto"))
+            flat["scan_workers"] = int(sc.get("workers", 0))
+            flat["scan_max_inflight"] = int(sc.get("max_inflight", 0))
         if "graph" in defaults:
             g = defaults["graph"]
-            flat["graph_schema_version"] = str(g.get("schema_version", "1"))
+            flat["graph_schema_version"] = str(g.get("schema_version", "3.1"))
             flat["graph_batch_size"] = int(g.get("batch_size", 500))
             flat["neo4j_uri"] = g.get("neo4j_uri") or ""
             flat["neo4j_user"] = g.get("neo4j_user", "neo4j")
@@ -136,9 +144,7 @@ class HunterSettings(BaseSettings):
             rp = a.get("rule_pack_path") or ""
             flat["rule_pack_path"] = Path(rp) if rp else None
             flat["rule_timeout_seconds"] = float(a.get("rule_timeout_seconds", 60))
-            flat["analysis_max_same_file_flow_edges_per_file"] = int(
-                a.get("max_same_file_flow_edges_per_file", 500)
-            )
+            flat["analysis_max_same_file_flow_edges_per_file"] = int(a.get("max_same_file_flow_edges_per_file", 500))
         if "taint" in defaults:
             t = defaults["taint"]
             flat["taint_max_function_nodes"] = int(t.get("max_function_nodes", 5000))

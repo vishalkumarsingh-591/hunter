@@ -26,6 +26,8 @@ def build_graph_from_parse(
     manifest: RepoManifest,
     parse: ParseRunResult,
     schema_version: str,
+    *,
+    run_structural_import: bool = True,
 ) -> GraphBuildResult:
     sid = _snapshot_id(manifest.manifest_sha256, parse.parser_lock_hash)
     g = InMemoryGraph(snapshot_id=sid, schema_version=schema_version)
@@ -65,6 +67,6 @@ def build_graph_from_parse(
                 },
             )
             g.add_edge(fid, "CONTAINS_IR", gid, {})
-    struct_stats = import_structural(g, parse)
+    struct_stats = import_structural(g, parse) if run_structural_import else None
     ok, issues = check_integrity(g)
     return GraphBuildResult(graph=g, integrity_ok=ok, integrity_issues=issues, structural_stats=struct_stats)

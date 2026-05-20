@@ -15,6 +15,7 @@ def enrich_findings(
     graph_integrity_ok: bool,
     agents_enabled: bool,
     confidence_weights: Path | None = None,
+    profile_id: str = "",
 ) -> tuple[list[EnrichedFinding], list[dict]]:
     if agents_enabled:
         from hunter.agents.workflows.scan_workflow import run_langgraph_enrichment
@@ -25,7 +26,7 @@ def enrich_findings(
             graph_integrity_ok=graph_integrity_ok,
             confidence_weights=confidence_weights,
         )
-    engine = ConfidenceEngine(confidence_weights)
+    engine = ConfidenceEngine(confidence_weights, profile_id=profile_id)
     enriched: list[EnrichedFinding] = []
     trace: list[dict] = []
     for c in candidates:
@@ -33,9 +34,7 @@ def enrich_findings(
         sk = deterministic_skeptic(c)
         ver = verify_finding(c)
         conf = engine.score(c, ver, sk, graph_integrity_ok)
-        enriched.append(
-            EnrichedFinding(candidate=c, hypothesis=hyp, skeptic=sk, verification=ver, confidence=conf)
-        )
+        enriched.append(EnrichedFinding(candidate=c, hypothesis=hyp, skeptic=sk, verification=ver, confidence=conf))
         trace.append(
             {
                 "finding_id": c.finding_id,
