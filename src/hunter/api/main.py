@@ -1,25 +1,66 @@
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from hunter.logging import configure_logging, set_scan_context
-from hunter.orchestration.scan_runner import ScanRunner
-from hunter.settings import HunterSettings
+from hunter.api.deps import get_settings
+from hunter.api.routers import github, scans, uploads
 
-app = FastAPI(title="Hunter", version="0.1.0")
-_settings: HunterSettings | None = None
+app = FastAPI(
+    title="Hunter Security Dashboard",
+    version="0.2.0",
+    description="Connect GitHub repos or upload code to run Hunter static analysis.",
+)
+
+_settings = None
 
 
-def get_settings() -> HunterSettings:
+@app.on_event("startup")
+def _startup() -> None:
     global _settings
-    if _settings is None:
-        _settings = HunterSettings.load()
-        configure_logging(_settings.log_level, json_logs=True)
-    return _settings
+    _settings = get_settings()
+    _settings.workspace_root.mkdir(parents=True, exist_ok=True)
+    _settings.output_root.mkdir(parents=True, exist_ok=True)
+    _settings.parse_cache_root.mkdir(parents=True, exist_ok=True)
+    from hunter.api.services.scan_jobs import reconcile_stale_scans
+
+    reconcile_stale_scans(_settings)
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "hunter-dashboard"}
+
+
+def _cors_origins() -> list[str]:
+    try:
+        return get_settings().cors_origins
+    except Exception:  # noqa: BLE001
+        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(scans.router)
+app.include_router(github.router)
+app.include_router(uploads.router)
+
+# Legacy minimal scan API (path on server)
+from pydantic import BaseModel  # noqa: E402
+
+from hunter.logging import configure_logging, set_scan_context  # noqa: E402
+from hunter.orchestration.scan_runner import ScanRunner  # noqa: E402
+from hunter.models.core import QuotaConfig, ScanConfig  # noqa: E402
+import uuid  # noqa: E402
 
 
 class ScanRequest(BaseModel):
@@ -34,19 +75,17 @@ class ScanResponse(BaseModel):
     snapshot_id: str | None = None
 
 
-_STORE: dict[str, ScanResponse] = {}
+@app.post("/scans", response_model=ScanResponse, tags=["legacy"])
+def create_scan_sync(body: ScanRequest) -> ScanResponse:
+    """Synchronous scan (blocks until complete). Prefer /api/uploads or /api/github/clone."""
+    from fastapi import HTTPException
 
-
-@app.post("/scans", response_model=ScanResponse)
-def create_scan(body: ScanRequest) -> ScanResponse:
     p = Path(body.plugin_path)
     if not p.is_dir():
         raise HTTPException(400, "plugin_path must be a directory")
+    settings = get_settings()
     scan_id = uuid.uuid4().hex
     set_scan_context(scan_id=scan_id, trace_id=scan_id)
-    settings = get_settings()
-    from hunter.models.core import QuotaConfig, ScanConfig
-
     cfg = ScanConfig(
         plugin_root=p,
         profile=body.profile,
@@ -61,9 +100,6 @@ def create_scan(body: ScanRequest) -> ScanResponse:
             follow_symlinks=settings.ingest_follow_symlinks,
         ),
         agents_enabled=settings.agents_enabled,
-        neo4j_uri=settings.neo4j_uri,
-        neo4j_user=settings.neo4j_user,
-        neo4j_password=settings.neo4j_password,
         database_url=settings.database_url,
         rule_pack_path=settings.rule_pack_path,
         graph_schema_version=settings.graph_schema_version,
@@ -77,20 +113,15 @@ def create_scan(body: ScanRequest) -> ScanResponse:
         incremental_recompute_enabled=settings.incremental_recompute_enabled,
         neo4j_layered_write_enabled=settings.neo4j_layered_write_enabled,
     )
-    runner = ScanRunner(settings)
-    result = runner.run(cfg)
-    resp = ScanResponse(
+    result = ScanRunner(settings).run(cfg)
+    return ScanResponse(
         scan_id=result.scan_id,
         status="COMPLETED",
         output_dir=str(result.output_dir),
         snapshot_id=result.snapshot_id,
     )
-    _STORE[result.scan_id] = resp
-    return resp
 
 
-@app.get("/scans/{scan_id}", response_model=ScanResponse)
-def get_scan(scan_id: str) -> ScanResponse:
-    if scan_id not in _STORE:
-        raise HTTPException(404, "unknown scan_id")
-    return _STORE[scan_id]
+_dashboard_dist = Path(__file__).resolve().parents[3] / "dashboard" / "dist"
+if _dashboard_dist.is_dir():
+    app.mount("/", StaticFiles(directory=str(_dashboard_dist), html=True), name="dashboard")

@@ -28,6 +28,12 @@ class HunterSettings(BaseSettings):
     )
 
     output_root: Path = Field(default=Path("output"))
+    workspace_root: Path = Field(default=Path("workspaces"))
+    parse_cache_root: Path = Field(default=Path("workspaces/cache/parse"))
+    github_token: str = ""
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"])
+    dashboard_persist_findings: bool = False
+    dashboard_fast_scan: bool = True
     snapshot_mode: str = Field(default="copy")
     ingest_max_files: int = 50_000
     ingest_max_total_bytes: int = 5 * 1024**3
@@ -96,6 +102,16 @@ class HunterSettings(BaseSettings):
         if "output" in defaults:
             flat["output_root"] = Path(defaults["output"].get("root", "./output"))
             flat["snapshot_mode"] = defaults["output"].get("snapshot_mode", "copy")
+        if "dashboard" in defaults:
+            d = defaults["dashboard"]
+            flat["workspace_root"] = Path(d.get("workspace_root", "./workspaces"))
+            flat["github_token"] = str(d.get("github_token") or "")
+            flat["cors_origins"] = list(d.get("cors_origins") or ["http://localhost:5173", "http://127.0.0.1:5173"])
+            flat["dashboard_persist_findings"] = bool(d.get("persist_findings", False))
+            flat["dashboard_fast_scan"] = bool(d.get("fast_scan", True))
+            pcr = d.get("parse_cache_root") or ""
+            if pcr:
+                flat["parse_cache_root"] = Path(pcr)
         if "ingest" in defaults:
             ing = defaults["ingest"]
             flat["ingest_max_files"] = ing.get("max_files", 50_000)

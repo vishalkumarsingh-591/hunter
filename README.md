@@ -42,7 +42,7 @@ pytest -q
 ### 4) Run a scan (example fixture)
 
 ```powershell
-hunter scan tests\fixtures\wp_plugins\minimal_plugin
+hunter tests\fixtures\wp_plugins\minimal_plugin
 ```
 
 Or without installing the console script:
@@ -103,15 +103,44 @@ Artifacts default to `./output/<plugin-slug>/`, including:
 
 Tuning heavy scans: use `scan.workers` for speed without disabling features; optional `semantic` flags can be lowered for triage-only runs.
 
-## API (optional)
+## Web dashboard
 
-Minimal FastAPI service (same `ScanRunner` as the CLI for synchronous scans):
+React UI + FastAPI backend (GitHub connect, ZIP upload, async scans, PostgreSQL/SQLite findings).
+
+### 1) API
 
 ```powershell
-uvicorn hunter.api.main:app --reload
+pip install -e .
+uvicorn hunter.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-`POST /scans` with `{"plugin_path": "C:\\path\\to\\plugin"}` expects an **existing directory on the machine running the API**.
+Scans run in a **background worker process** with a fast dashboard profile. Stuck scans after an API restart are marked failed on startup — delete them and run again.
+
+Optional: `HUNTER_DATABASE_URL=postgresql://user:pass@localhost/hunter` (defaults to SQLite at `workspaces/data/hunter.db`).  
+GitHub: set `HUNTER_GITHUB_TOKEN` or pass `X-GitHub-Token` from the UI.
+
+### 2) Frontend (dev)
+
+```powershell
+cd dashboard
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 — Vite proxies `/api` to the API.
+
+### 3) Production-style (single server)
+
+```powershell
+cd dashboard && npm run build
+uvicorn hunter.api.main:app --host 0.0.0.0 --port 8000
+```
+
+Serves the built UI from `dashboard/dist` when present.
+
+## API (legacy sync)
+
+`POST /scans` with `{"plugin_path": "C:\\path\\to\\plugin"}` runs a **blocking** scan (same engine as CLI). Prefer `/api/uploads` or `/api/github/clone` for the dashboard workflow.
 
 ## Documentation
 

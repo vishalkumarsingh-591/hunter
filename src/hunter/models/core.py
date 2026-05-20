@@ -129,6 +129,8 @@ class ScanConfig(BaseModel):
     neo4j_layered_write_enabled: bool = False
     scan_workers: int = 0
     scan_max_inflight: int = 0
+    dashboard_meta: dict[str, str] = Field(default_factory=dict)
+    persist_findings_to_db: bool = True
 
 
 class ScanResult(BaseModel):
